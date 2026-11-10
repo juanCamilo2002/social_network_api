@@ -1,0 +1,22 @@
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres_db_social_network
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres_user_admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: social_network
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres_user_admin -d social_network"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
