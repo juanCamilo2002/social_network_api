@@ -10,11 +10,10 @@ import { isUUID } from 'class-validator';
 import { Request } from 'express';
 
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 
 type AuthenticatedRequest = Request & {
-  user?: {
-    id: string;
-  };
+  user?: AuthenticatedUser;
 };
 
 interface JwtPayload {

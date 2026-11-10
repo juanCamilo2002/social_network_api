@@ -5,18 +5,12 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
 } from '@nestjs/common';
-import { Request } from 'express';
 
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
-
-type AuthenticatedRequest = Request & {
-  user: {
-    id: string;
-  };
-};
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 
 @Controller('posts')
 export class PostsController {
@@ -33,7 +27,7 @@ export class PostsController {
   }
 
   @Post()
-  create(@Body() dto: CreatePostDto, @Req() request: AuthenticatedRequest) {
-    return this.postsService.create(dto, request.user.id);
+  create(@Body() dto: CreatePostDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.postsService.create(dto, user.id);
   }
 }
