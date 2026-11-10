@@ -9,6 +9,7 @@ import { App } from 'supertest/types';
 import { AuthModule } from '../src/modules/auth/auth.module';
 import { User } from '../src/modules/users/entities/user.entity';
 import { PostsModule } from '../src/modules/posts/posts.module';
+import { Post } from '../src/modules/posts/entities/post.entity';
 
 const TEST_SECRET = 'test-secret-only-for-module-tests-123456';
 const USER_ID = '550e8400-e29b-41d4-a716-446655440000';
@@ -34,6 +35,10 @@ describe('AuthModule y guard global (e2e)', () => {
       })
       .overrideProvider(getRepositoryToken(User))
       .useValue({})
+      .overrideProvider(getRepositoryToken(Post))
+      .useValue({
+        find: jest.fn().mockResolvedValue([]),
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -62,16 +67,11 @@ describe('AuthModule y guard global (e2e)', () => {
   });
 
   it('permite llegar a la validación de login sin token', async () => {
-    await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({})
-      .expect(400);
+    await request(app.getHttpServer()).post('/auth/login').send({}).expect(400);
   });
 
   it('protege las rutas de posts sin configuración local del guard', async () => {
-    await request(app.getHttpServer())
-      .get('/posts')
-      .expect(401);
+    await request(app.getHttpServer()).get('/posts').expect(401);
   });
 
   it('rechaza un token inválido en posts', async () => {

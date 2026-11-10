@@ -1,30 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Post } from './interfaces/post.interface';
 import { CreatePostDto } from './dto/create-post.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Post } from './entities/post.entity';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class PostsService {
-  private posts: Post[] = [
-    {
-      id: 1,
-      author: 'Juan Camilo Ordoñez',
-      content: 'El cielo está hermoso.',
-      createdAt: '2026-11-06T20:27:42.188Z',
-    },
-    {
-      id: 2,
-      author: 'Diego Alejandro Ordoñez Morea',
-      content: 'Esta tarde está bellisima',
-      createdAt: '2026-11-06T20:27:42.188Z',
-    },
-  ];
+  constructor(
+    @InjectRepository(Post)
+    private readonly postsRepository: Repository<Post>,
+  ) {}
 
-  findAll(): Post[] {
-    return this.posts;
+  async findAll(): Promise<Post[]> {
+    return this.postsRepository.find({
+      order: {
+        createdAt: 'DESC',
+      },
+    });
   }
 
-  findOne(id: number): Post {
-    const post = this.posts.find((post) => post.id === id);
+  async findOne(id: string): Promise<Post> {
+    const post = await this.postsRepository.findOneBy({ id });
 
     if (!post) {
       throw new NotFoundException('Post not found.');
@@ -33,16 +29,12 @@ export class PostsService {
     return post;
   }
 
-  create(dto: CreatePostDto): Post {
-    const newPost: Post = {
-      id: this.posts.length + 1,
-      author: dto.author,
+  async create(dto: CreatePostDto, authorId: string): Promise<Post> {
+    const post = this.postsRepository.create({
       content: dto.content,
-      createdAt: new Date().toISOString(),
-    };
+      authorId,
+    });
 
-    this.posts.push(newPost);
-
-    return newPost;
+    return this.postsRepository.save(post);
   }
 }
