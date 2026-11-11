@@ -213,4 +213,102 @@ describe('Posts con PostgreSQL (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });
+
+  it('permite al autor editar su publicación', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Contenido original' })
+      .expect(201);
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: '  Contenido actualizado  ' })
+      .expect(200);
+
+    expect(updated.body).toMatchObject({
+      id: created.body.id,
+      authorId: userId,
+      content: 'Contenido actualizado',
+    });
+
+    const storedPost = await postsRepository.findOneBy({
+      id: created.body.id,
+    });
+
+    expect(storedPost?.content).toBe('Contenido actualizado');
+  });
+
+  it('impide editar una publicación de otro usuario', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Contenido original' })
+      .expect(201);
+
+    const otherToken = await jwtService.signAsync({
+      sub: randomUUID(),
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ content: 'Cambio no permitido' })
+      .expect(403);
+
+    const storedPost = await postsRepository.findOneBy({
+      id: created.body.id,
+    });
+
+    expect(storedPost?.content).toBe('Contenido original');
+  });
+
+  it('rechaza la edición sin token', async () => {
+    await request(app.getHttpServer())
+      .patch(`/posts/${randomUUID()}`)
+      .send({ content: 'Contenido actualizado' })
+      .expect(401);
+  });
+
+  it('devuelve 404 al editar un post inexistente', async () => {
+    await request(app.getHttpServer())
+      .patch(`/posts/${randomUUID()}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Contenido actualizado' })
+      .expect(404);
+  });
+
+  it('devuelve 400 al editar con un ID inválido', async () => {
+    await request(app.getHttpServer())
+      .patch('/posts/no-es-un-uuid')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Contenido actualizado' })
+      .expect(400);
+  });
+
+  it.each([
+    ['contenido vacío', { content: '' }],
+    ['solo espacios', { content: '   ' }],
+    ['contenido ausente', {}],
+    ['contenido numérico', { content: 123 }],
+  ])('rechaza la edición con %s', async (_description, body) => {
+    const created = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Contenido original' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .patch(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(body)
+      .expect(400);
+
+    const storedPost = await postsRepository.findOneBy({
+      id: created.body.id,
+    });
+
+    expect(storedPost?.content).toBe('Contenido original');
+  });
 });
