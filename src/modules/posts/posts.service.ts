@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Post } from './entities/post.entity';
 import { Repository } from 'typeorm';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { PostResponse } from './interfaces/post-response.interface';
 
 @Injectable()
 export class PostsService {
@@ -16,35 +17,37 @@ export class PostsService {
     private readonly postsRepository: Repository<Post>,
   ) {}
 
-  async findAll(): Promise<Post[]> {
-    return this.postsRepository.find({
-      order: {
-        createdAt: 'DESC',
-      },
-    });
+  async findAll(): Promise<PostResponse[]> {
+    const posts = await this.postsWithAuthor()
+      .orderBy('post.createdAt', 'DESC')
+      .getMany();
+
+    return posts.map((post) => this.toResponse(post));
   }
 
-  async findOne(id: string): Promise<Post> {
-    const post = await this.postsRepository.findOneBy({ id });
+  async findOne(id: string): Promise<PostResponse> {
+    const post = await this.findPostWithAuthor(id);
 
-    if (!post) {
-      throw new NotFoundException('Post not found.');
-    }
-
-    return post;
+    return this.toResponse(post);
   }
 
-  async create(dto: CreatePostDto, authorId: string): Promise<Post> {
+  async create(dto: CreatePostDto, authorId: string): Promise<PostResponse> {
     const post = this.postsRepository.create({
       content: dto.content,
       authorId,
     });
 
-    return this.postsRepository.save(post);
+    const savedPost = await this.postsRepository.save(post);
+
+    return this.findOne(savedPost.id);
   }
 
-  async update(id: string, dto: UpdatePostDto, userId: string): Promise<Post> {
-    const post = await this.findOne(id);
+  async update(
+    id: string,
+    dto: UpdatePostDto,
+    userId: string,
+  ): Promise<PostResponse> {
+    const post = await this.findPostWithAuthor(id);
 
     if (post.authorId !== userId) {
       throw new ForbiddenException('You cannot edit this post');
@@ -52,11 +55,13 @@ export class PostsService {
 
     post.content = dto.content;
 
-    return this.postsRepository.save(post);
+    const savedPost = await this.postsRepository.save(post);
+
+    return this.toResponse(savedPost);
   }
 
   async remove(id: string, userId: string): Promise<void> {
-    const post = await this.findOne(id);
+    const post = await this.findPostWithAuthor(id);
 
     if (post.authorId !== userId) {
       throw new ForbiddenException('You cannot delete this post');
@@ -70,5 +75,39 @@ export class PostsService {
     if (result.affected === 0) {
       throw new NotFoundException('Post not found.');
     }
+  }
+
+  private postsWithAuthor() {
+    return this.postsRepository
+      .createQueryBuilder('post')
+      .innerJoin('post.author', 'author')
+      .addSelect(['author.id', 'author.nickname', 'author.profilePicture']);
+  }
+
+  private toResponse(post: Post): PostResponse {
+    return {
+      id: post.id,
+      authorId: post.authorId,
+      content: post.content,
+      createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
+      author: {
+        id: post.author.id,
+        nickname: post.author.nickname,
+        profilePicture: post.author.profilePicture,
+      },
+    };
+  }
+
+  private async findPostWithAuthor(id: string): Promise<Post> {
+    const post = await this.postsWithAuthor()
+      .where('post.id = :id', { id })
+      .getOne();
+
+    if (!post) {
+      throw new NotFoundException('Post not found.');
+    }
+
+    return post;
   }
 }

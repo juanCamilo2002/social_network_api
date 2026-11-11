@@ -37,7 +37,12 @@ describe('AuthModule y guard global (e2e)', () => {
       .useValue({})
       .overrideProvider(getRepositoryToken(Post))
       .useValue({
-        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          innerJoin: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue([]),
+        }),
       })
       .compile();
 
