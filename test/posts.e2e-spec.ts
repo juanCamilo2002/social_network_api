@@ -112,6 +112,53 @@ describe('Posts con PostgreSQL (e2e)', () => {
     }
   });
 
+  it('devuelve solo los datos públicos correctos del autor al crear, consultar, listar y editar', async () => {
+    if (!userId) {
+      throw new Error('No se creó el usuario de prueba');
+    }
+
+    const author = await usersRepository.findOneByOrFail({ id: userId });
+    const expectedAuthor = {
+      id: author.id,
+      nickname: author.nickname,
+      profilePicture: author.profilePicture,
+    };
+
+    const created = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Publicación con autor' })
+      .expect(201);
+
+    const found = await request(app.getHttpServer())
+      .get(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const listed = await request(app.getHttpServer())
+      .get('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const updated = await request(app.getHttpServer())
+      .patch(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Publicación actualizada' })
+      .expect(200);
+
+    const listedPost = listed.body.find(
+      (post: { id: string }) => post.id === created.body.id,
+    );
+
+    expect(listedPost).toBeDefined();
+
+    for (const post of [created.body, found.body, listedPost, updated.body]) {
+      expect(post.authorId).toBe(userId);
+      // La comparación exacta también evita exponer datos privados adicionales.
+      expect(post.author).toEqual(expectedAuthor);
+    }
+  });
+
   it('rechaza consultas sin autenticación', async () => {
     await request(app.getHttpServer()).get('/posts').expect(401);
   });
@@ -357,6 +404,15 @@ describe('Posts con PostgreSQL (e2e)', () => {
     });
 
     expect(storedPost).not.toBeNull();
+    expect(created.body.author).toMatchObject({
+      id: userId,
+      nickname: expect.any(String),
+      profilePicture: null,
+    });
+
+    expect(created.body.author).not.toHaveProperty('email');
+    expect(created.body.author).not.toHaveProperty('birthdate');
+    expect(created.body.author).not.toHaveProperty('passwordHash');
   });
 
   it('rechaza la eliminación sin token', async () => {
