@@ -8,7 +8,7 @@ import * as argon2 from 'argon2';
 import { QueryFailedError, Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { RegisterDto } from './dto/register.dto';
-import { UserResponseDto } from '../users/entities/dto/user-response.dto';
+import { UserResponseDto } from '../users/dto/user-response.dto';
 import { JwtService } from '@nestjs/jwt';
 import { LoginDto } from './dto/login.dto';
 
