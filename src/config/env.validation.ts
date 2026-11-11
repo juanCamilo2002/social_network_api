@@ -11,6 +11,7 @@ import {
   MinLength,
   validateSync,
 } from 'class-validator';
+import { parseAllowedOrigins } from './cors-origins';
 
 enum Environment {
   Development = 'development',
@@ -67,6 +68,10 @@ export class EnvironmentVariables {
   @MinLength(32)
   @Matches(/\S/)
   JWT_SECRET!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  CORS_ALLOWED_ORIGINS!: string;
 }
 
 export function validate(config: Record<string, unknown>) {
@@ -79,6 +84,8 @@ export function validate(config: Record<string, unknown>) {
   if (errors.length > 0) {
     throw new Error(`Environment variables invalids:\n${errors.join('\n')}`);
   }
+
+  parseAllowedOrigins(validatedConfig.CORS_ALLOWED_ORIGINS);
 
   return validatedConfig;
 }
