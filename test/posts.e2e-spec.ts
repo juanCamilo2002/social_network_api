@@ -311,4 +311,71 @@ describe('Posts con PostgreSQL (e2e)', () => {
 
     expect(storedPost?.content).toBe('Contenido original');
   });
+
+  it('permite al autor eliminar su publicación', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Publicación para eliminar' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .delete(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(204);
+
+    await request(app.getHttpServer())
+      .get(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    const storedPost = await postsRepository.findOneBy({
+      id: created.body.id,
+    });
+
+    expect(storedPost).toBeNull();
+  });
+
+  it('impide eliminar una publicación de otro usuario', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Publicación protegida' })
+      .expect(201);
+
+    const otherToken = await jwtService.signAsync({
+      sub: randomUUID(),
+    });
+
+    await request(app.getHttpServer())
+      .delete(`/posts/${created.body.id}`)
+      .set('Authorization', `Bearer ${otherToken}`)
+      .expect(403);
+
+    const storedPost = await postsRepository.findOneBy({
+      id: created.body.id,
+    });
+
+    expect(storedPost).not.toBeNull();
+  });
+
+  it('rechaza la eliminación sin token', async () => {
+    await request(app.getHttpServer())
+      .delete(`/posts/${randomUUID()}`)
+      .expect(401);
+  });
+
+  it('devuelve 404 al eliminar un post inexistente', async () => {
+    await request(app.getHttpServer())
+      .delete(`/posts/${randomUUID()}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('devuelve 400 al eliminar con un ID inválido', async () => {
+    await request(app.getHttpServer())
+      .delete('/posts/no-es-un-uuid')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(400);
+  });
 });

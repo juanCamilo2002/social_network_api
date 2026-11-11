@@ -54,4 +54,21 @@ export class PostsService {
 
     return this.postsRepository.save(post);
   }
+
+  async remove(id: string, userId: string): Promise<void> {
+    const post = await this.findOne(id);
+
+    if (post.authorId !== userId) {
+      throw new ForbiddenException('You cannot delete this post');
+    }
+
+    const result = await this.postsRepository.delete({
+      id,
+      authorId: userId,
+    });
+
+    if (result.affected === 0) {
+      throw new NotFoundException('Post not found.');
+    }
+  }
 }
