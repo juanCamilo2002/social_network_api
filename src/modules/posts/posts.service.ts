@@ -1,8 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Post } from './entities/post.entity';
 import { Repository } from 'typeorm';
+import { UpdatePostDto } from './dto/update-post.dto';
 
 @Injectable()
 export class PostsService {
@@ -34,6 +39,18 @@ export class PostsService {
       content: dto.content,
       authorId,
     });
+
+    return this.postsRepository.save(post);
+  }
+
+  async update(id: string, dto: UpdatePostDto, userId: string): Promise<Post> {
+    const post = await this.findOne(id);
+
+    if (post.authorId !== userId) {
+      throw new ForbiddenException('You cannot edit this post');
+    }
+
+    post.content = dto.content;
 
     return this.postsRepository.save(post);
   }
