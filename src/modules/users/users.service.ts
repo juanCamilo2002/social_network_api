@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Brackets, Repository } from 'typeorm';
 
 import { User } from './entities/user.entity';
 import { UserSearchResult } from './interfaces/user-search-result.interface';
 import { UserProfile } from './interfaces/user-profile.interface';
+import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 
 @Injectable()
 export class UsersService {
@@ -83,5 +88,40 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  async updateOwnProfile(
+    userId: string,
+    dto: UpdateOwnProfileDto,
+  ): Promise<UserProfile> {
+    const changes: {
+      name?: string;
+      lastName?: string;
+      biography?: string | null;
+    } = {};
+
+    if (dto.name !== undefined) {
+      changes.name = dto.name;
+    }
+
+    if (dto.lastName !== undefined) {
+      changes.lastName = dto.lastName;
+    }
+
+    if (dto.biography !== undefined) {
+      changes.biography = dto.biography;
+    }
+
+    if (Object.keys(changes).length === 0) {
+      throw new BadRequestException('No profile fields provided');
+    }
+
+    const result = await this.usersRepository.update({ id: userId }, changes);
+
+    if (result.affected === 0) {
+      throw new NotFoundException('User not found');
+    }
+
+    return this.findOwnProfile(userId);
   }
 }

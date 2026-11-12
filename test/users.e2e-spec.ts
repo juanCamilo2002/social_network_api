@@ -366,4 +366,148 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(404);
   });
+
+  it('requiere autenticación para editar el perfil propio', async () => {
+    await request(app.getHttpServer())
+      .patch('/users/me')
+      .send({ name: 'Nuevo' })
+      .expect(401);
+  });
+
+  it('actualiza nombre, apellido y biografía y devuelve campos públicos', async () => {
+    const response = await request(app.getHttpServer())
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        name: '  Juan  ',
+        lastName: '  Pérez  ',
+        biography: '  Hola, soy Juan.  ',
+      })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: firstUserId,
+      nickname: `sol_${suffix}`,
+      name: 'Juan',
+      lastName: 'Pérez',
+      profilePicture: null,
+      banner: null,
+      biography: 'Hola, soy Juan.',
+    });
+
+    const stored = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    expect(stored.name).toBe('Juan');
+    expect(stored.lastName).toBe('Pérez');
+    expect(stored.biography).toBe('Hola, soy Juan.');
+  });
+
+  it('actualiza solo los campos enviados', async () => {
+    const response = await request(app.getHttpServer())
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ name: 'Nuevo nombre' })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: firstUserId,
+      nickname: `sol_${suffix}`,
+      name: 'Nuevo nombre',
+      lastName: `Paz${suffix}`,
+      profilePicture: null,
+      banner: null,
+      biography: null,
+    });
+  });
+
+  it.each([
+    ['null', null],
+    ['una cadena vacía', ''],
+    ['solo espacios', '   '],
+  ])(
+    'permite eliminar la biografía con %s',
+    async (_description, biography) => {
+      await usersRepository.update(
+        { id: firstUserId },
+        { biography: 'Biografía anterior' },
+      );
+
+      const response = await request(app.getHttpServer())
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ biography })
+        .expect(200);
+
+      expect(response.body.biography).toBeNull();
+
+      const stored = await usersRepository.findOneByOrFail({ id: firstUserId });
+      expect(stored.biography).toBeNull();
+    },
+  );
+
+  it.each([
+    ['nombre vacío', { name: '   ' }],
+    ['nombre nulo', { name: null }],
+    ['nombre demasiado largo', { name: 'a'.repeat(101) }],
+    ['apellido vacío', { lastName: '' }],
+    ['apellido nulo', { lastName: null }],
+    ['apellido demasiado largo', { lastName: 'a'.repeat(101) }],
+    ['biografía demasiado larga', { biography: 'a'.repeat(501) }],
+    ['biografía no textual', { biography: 123 }],
+    ['cuerpo vacío', {}],
+  ])('rechaza %s', async (_description, body) => {
+    await request(app.getHttpServer())
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send(body)
+      .expect(400);
+  });
+
+  it('no permite modificar campos fuera de la lista permitida', async () => {
+    const response = await request(app.getHttpServer())
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        name: 'Nombre permitido',
+        nickname: 'otro_nickname',
+        email: 'otro@example.com',
+        birthdate: '2000-01-01',
+        id: secondUserId,
+      })
+      .expect(200);
+
+    expect(response.body.id).toBe(firstUserId);
+    expect(response.body.nickname).toBe(`sol_${suffix}`);
+    expect(response.body.name).toBe('Nombre permitido');
+
+    const firstUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+    const secondUser = await usersRepository.findOneByOrFail({
+      id: secondUserId,
+    });
+
+    expect(firstUser.nickname).toBe(`sol_${suffix}`);
+    expect(firstUser.email).toBe(`first_${suffix}@example.com`);
+    expect(firstUser.birthdate).toBe('1990-05-20');
+    expect(secondUser.name).toBe(`Marta${suffix}`);
+  });
+
+  it('rechaza un cuerpo que solo contiene campos no editables', async () => {
+    await request(app.getHttpServer())
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ nickname: 'otro_nickname' })
+      .expect(400);
+  });
+
+  it('devuelve 404 si el usuario del token ya no existe', async () => {
+    const token = await jwtService.signAsync({ sub: randomUUID() });
+
+    await request(app.getHttpServer())
+      .patch('/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Nuevo nombre' })
+      .expect(404);
+  });
 });
