@@ -64,4 +64,24 @@ export class UsersService {
 
     return user;
   }
+
+  async findOwnProfile(userId: string): Promise<UserProfile> {
+    const user = await this.usersRepository
+      .createQueryBuilder('user')
+      .select('user.id', 'id')
+      .addSelect('user.nickname', 'nickname')
+      .addSelect('user.name', 'name')
+      .addSelect('user.lastName', 'lastName')
+      .addSelect('user.profilePicture', 'profilePicture')
+      .addSelect('user.banner', 'banner')
+      .addSelect('user.biography', 'biography')
+      .where('user.id = :userId', { userId })
+      .getRawOne<UserProfile>();
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
 }

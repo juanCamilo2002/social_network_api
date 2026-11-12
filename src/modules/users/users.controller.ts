@@ -4,6 +4,8 @@ import { SearchUserDto } from './dto/search-user.dto';
 import { UserSearchResult } from './interfaces/user-search-result.interface';
 import { UsersService } from './users.service';
 import { UserProfile } from './interfaces/user-profile.interface';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 
 @Controller('users')
 export class UsersController {
@@ -17,5 +19,10 @@ export class UsersController {
   @Get('by-nickname/:nickname')
   findByNickName(@Param('nickname') nickname: string): Promise<UserProfile> {
     return this.usersService.findByNickName(nickname);
+  }
+
+  @Get('me')
+  findOwnProfile(@CurrentUser() user: AuthenticatedUser): Promise<UserProfile> {
+    return this.usersService.findOwnProfile(user.id);
   }
 }
