@@ -313,4 +313,57 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(404);
   });
+
+  it('requiere autenticación para consultar el perfil propio', async () => {
+    await request(app.getHttpServer()).get('/users/me').expect(401);
+  });
+
+  it('devuelve únicamente los campos públicos del usuario autenticado', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: firstUserId,
+      nickname: `sol_${suffix}`,
+      name: `Nora${suffix}`,
+      lastName: `Paz${suffix}`,
+      profilePicture: null,
+      banner: null,
+      biography: null,
+    });
+  });
+
+  it('devuelve el perfil correspondiente a cada sesión', async () => {
+    const secondToken = await jwtService.signAsync({
+      sub: secondUserId,
+    });
+
+    const response = await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', `Bearer ${secondToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: secondUserId,
+      nickname: `solx${suffix}`,
+      name: `Marta${suffix}`,
+      lastName: `Otro${suffix}`,
+      profilePicture: null,
+      banner: null,
+      biography: null,
+    });
+  });
+
+  it('devuelve 404 si el usuario del token ya no existe', async () => {
+    const token = await jwtService.signAsync({
+      sub: randomUUID(),
+    });
+
+    await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+  });
 });
