@@ -5,6 +5,7 @@ import { EnvironmentVariables, validate } from './config/env.validation';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { createDatabaseOptions } from './config/database.config';
 import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AuthModule } from './modules/auth/auth.module';
     }),
     AuthModule,
     PostsModule,
+    UsersModule,
   ],
 })
 export class AppModule {}
