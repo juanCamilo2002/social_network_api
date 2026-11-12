@@ -264,4 +264,53 @@ describe('Búsqueda de usuarios (e2e)', () => {
 
     expect(response.body).toHaveLength(20);
   });
+
+  it('requiere autenticación para consultar un perfil', async () => {
+    await request(app.getHttpServer())
+      .get(`/users/by-nickname/sol_${suffix}`)
+      .expect(401);
+  });
+
+  it('devuelve únicamente los campos públicos del perfil', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/users/by-nickname/SOL_${suffix.toUpperCase()}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: firstUserId,
+      nickname: `sol_${suffix}`,
+      name: `Nora${suffix}`,
+      lastName: `Paz${suffix}`,
+      profilePicture: null,
+      banner: null,
+      biography: null,
+    });
+  });
+
+  it('devuelve 404 cuando el nickname no existe', async () => {
+    await request(app.getHttpServer())
+      .get(`/users/by-nickname/no_existe_${suffix}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('busca el nickname completo y trata el guion bajo literalmente', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/users/by-nickname/solx${suffix}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body.id).toBe(secondUserId);
+
+    await request(app.getHttpServer())
+      .get(`/users/by-nickname/sol__${suffix.slice(1)}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`/users/by-nickname/sol_${suffix.slice(0, -1)}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
 });
