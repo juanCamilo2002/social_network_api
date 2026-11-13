@@ -1,13 +1,21 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import sharp from 'sharp';
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import * as request from 'supertest';
+import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource, Repository } from 'typeorm';
 
 import { User } from '../src/modules/users/entities/user.entity';
+import { LocalStorageService } from '../src/modules/storage/local/local-storage.service';
+import { configureHttp } from '../src/config/http.config';
+import { STORAGE_SERVICE } from '../src/modules/storage/storage.interface';
 
 describe('Búsqueda de usuarios (e2e)', () => {
   let app: INestApplication<App>;
@@ -20,12 +28,16 @@ describe('Búsqueda de usuarios (e2e)', () => {
   let accessToken: string;
   let suffix: string;
 
+  let uploadRoot: string | undefined;
+  let testStorage: LocalStorageService;
+
   const originalEnvironment = {
     NODE_ENV: process.env.NODE_ENV,
     DB_HOST: process.env.DB_HOST,
     DB_NAME: process.env.DB_NAME,
     JWT_SECRET: process.env.JWT_SECRET,
     CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS,
+    PUBLIC_MEDIA_BASE_URL: process.env.PUBLIC_MEDIA_BASE_URL,
   };
 
   beforeAll(async () => {
@@ -34,15 +46,26 @@ describe('Búsqueda de usuarios (e2e)', () => {
     process.env.DB_NAME = 'social_network_test';
     process.env.JWT_SECRET = 'test-secret-only-for-users-e2e-123456';
     process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:5173';
+    process.env.PUBLIC_MEDIA_BASE_URL = 'http://localhost:3000/media/';
+
+    uploadRoot = await mkdtemp(join(tmpdir(), 'social-network-upload-e2e-'));
+    const testUploadRoot = uploadRoot;
+
+    testStorage = new LocalStorageService(testUploadRoot);
 
     // Configuramos el entorno antes de importar AppModule.
     const { AppModule } = await import('../src/app.module');
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(STORAGE_SERVICE)
+      .useValue(testStorage)
+      .compile();
 
     app = moduleRef.createNestApplication();
+
+    configureHttp(app, ['http://localhost:5173'], testUploadRoot);
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -113,6 +136,10 @@ describe('Búsqueda de usuarios (e2e)', () => {
   afterAll(async () => {
     if (app) {
       await app.close();
+    }
+
+    if (uploadRoot) {
+      await rm(uploadRoot, { recursive: true, force: true });
     }
 
     for (const [key, value] of Object.entries(originalEnvironment)) {
@@ -509,5 +536,510 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ name: 'Nuevo nombre' })
       .expect(404);
+  });
+
+  it('convierte la clave de la foto en URL para perfiles y búsqueda', async () => {
+    const key = `profile-pictures/${firstUserId}/${randomUUID()}.png`;
+    const expectedUrl = `http://localhost:3000/media/${key}`;
+
+    await usersRepository.update({ id: firstUserId }, { profilePicture: key });
+
+    const ownProfile = await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const publicProfile = await request(app.getHttpServer())
+      .get(`/users/by-nickname/sol_${suffix}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const search = await request(app.getHttpServer())
+      .get('/users/search')
+      .query({ q: `sol_${suffix}` })
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(ownProfile.body.profilePicture).toBe(expectedUrl);
+    expect(publicProfile.body.profilePicture).toBe(expectedUrl);
+    expect(search.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: firstUserId,
+          profilePicture: expectedUrl,
+        }),
+      ]),
+    );
+  });
+
+  it('requiere autenticación para subir una foto de perfil', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .attach('file', Buffer.from('archivo'), 'avatar.png')
+      .expect(401);
+  });
+
+  it('rechaza una petición sin archivo', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(400);
+  });
+
+  it('rechaza contenido que no es una imagen aunque tenga extensión válida', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', Buffer.from('no es una imagen'), 'avatar.png')
+      .expect(400);
+  });
+
+  it('rechaza archivos que superan los 5 MB', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', Buffer.alloc(5 * 1024 * 1024 + 2), 'grande.png')
+      .expect(413);
+  });
+
+  it('guarda la foto y permite consultarla públicamente', async () => {
+    if (!uploadRoot) {
+      throw new Error('No se creó la carpeta temporal');
+    }
+
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const response = await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'avatar.png')
+      .expect(201);
+
+    const storedUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+
+    expect(storedUser.profilePicture).toMatch(
+      new RegExp(`^profile-pictures/${firstUserId}/[0-9a-f-]+\\.png$`, 'i'),
+    );
+
+    const key = storedUser.profilePicture!;
+
+    expect(response.body.profilePicture).toBe(
+      `http://localhost:3000/media/${key}`,
+    );
+
+    const storedContent = await readFile(join(uploadRoot, ...key.split('/')));
+    const storedMetadata = await sharp(storedContent).metadata();
+
+    expect(storedMetadata.format).toBe('png');
+    expect(storedMetadata.width).toBe(10);
+    expect(storedMetadata.height).toBe(10);
+    expect(storedMetadata.exif).toBeUndefined();
+
+    // La lectura es pública: no enviamos Authorization.
+    const publicResponse = await request(app.getHttpServer())
+      .get(`/media/${key}`)
+      .set('Origin', 'http://localhost:5173')
+      .expect(200);
+
+    expect(publicResponse.headers['content-type']).toMatch(/^image\/png/);
+    expect(publicResponse.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+
+    const otherOriginResponse = await request(app.getHttpServer())
+      .get(`/media/${key}`)
+      .set('Origin', 'http://localhost:9999')
+      .expect(200);
+
+    expect(
+      otherOriginResponse.headers['access-control-allow-origin'],
+    ).toBeUndefined();
+  });
+
+  it('reemplaza la imagen anterior después de guardar la nueva', async () => {
+    if (!uploadRoot) {
+      throw new Error('No se creó la carpeta temporal');
+    }
+
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primera.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousKey = before.profilePicture!;
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'segunda.png')
+      .expect(201);
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const currentKey = after.profilePicture!;
+
+    expect(currentKey).not.toBe(previousKey);
+
+    await request(app.getHttpServer()).get(`/media/${previousKey}`).expect(404);
+
+    await request(app.getHttpServer()).get(`/media/${currentKey}`).expect(200);
+  });
+
+  it('conserva la imagen activa ante dos subidas simultáneas', async () => {
+    if (!uploadRoot) {
+      throw new Error('No se creó la carpeta temporal');
+    }
+
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/users/me/profile-picture')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'primera.png'),
+      request(app.getHttpServer())
+        .post('/users/me/profile-picture')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segunda.png'),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    const storedUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+
+    const activeKey = storedUser.profilePicture;
+
+    expect(activeKey).not.toBeNull();
+
+    if (!activeKey) {
+      throw new Error('No quedó una foto activa');
+    }
+
+    // La imagen que quedó en la base de datos debe seguir disponible.
+    await request(app.getHttpServer()).get(`/media/${activeKey}`).expect(200);
+
+    // Para este usuario recién creado, solo debe quedar la foto activa.
+    const files = await readdir(
+      join(uploadRoot, 'profile-pictures', firstUserId),
+    );
+
+    expect(files).toEqual([activeKey.split('/').at(-1)]);
+  });
+
+  it('elimina los metadatos y conserva la orientación visual en la foto pública', async () => {
+    const original = await sharp({
+      create: {
+        width: 12,
+        height: 6,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+
+    const originalMetadata = await sharp(original).metadata();
+
+    expect(originalMetadata.exif).toBeDefined();
+    expect(originalMetadata.orientation).toBe(6);
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', original, 'avatar.jpg')
+      .expect(201);
+
+    const storedUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+
+    const key = storedUser.profilePicture;
+
+    expect(key).not.toBeNull();
+
+    if (!key) {
+      throw new Error('No se guardó la clave de la imagen');
+    }
+
+    // Consultamos el mismo archivo que recibiría un visitante, sin token.
+    const response = await request(app.getHttpServer())
+      .get(`/media/${key}`)
+      .expect(200);
+
+    expect(response.headers['content-type']).toMatch(/^image\/jpeg/);
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+
+    const publicMetadata = await sharp(response.body as Buffer).metadata();
+
+    expect(publicMetadata.format).toBe('jpeg');
+    expect(publicMetadata.width).toBe(6);
+    expect(publicMetadata.height).toBe(12);
+    expect(publicMetadata.orientation).toBeUndefined();
+    expect(publicMetadata.exif).toBeUndefined();
+    expect(publicMetadata.xmp).toBeUndefined();
+    expect(publicMetadata.iptc).toBeUndefined();
+  });
+
+  it('conserva la imagen anterior si falla el almacenamiento de la nueva', async () => {
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primera.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousKey = before.profilePicture;
+
+    expect(previousKey).not.toBeNull();
+
+    if (!previousKey) {
+      throw new Error('No se guardó la imagen anterior');
+    }
+
+    const saveSpy = jest
+      .spyOn(testStorage, 'saveProfilePicture')
+      .mockRejectedValueOnce(new Error('Error de almacenamiento simulado'));
+
+    try {
+      await request(app.getHttpServer())
+        .post('/users/me/profile-picture')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segunda.png')
+        .expect(500);
+    } finally {
+      saveSpy.mockRestore();
+    }
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    expect(after.profilePicture).toBe(previousKey);
+
+    await request(app.getHttpServer())
+      .get(`/media/${previousKey}`)
+      .expect(200);
+  });
+
+  it('conserva la nueva imagen si falla el borrado de la anterior', async () => {
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primera.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousKey = before.profilePicture;
+
+    expect(previousKey).not.toBeNull();
+
+    if (!previousKey) {
+      throw new Error('No se guardó la imagen anterior');
+    }
+
+    const deleteSpy = jest
+      .spyOn(testStorage, 'deleteProfilePicture')
+      .mockRejectedValueOnce(new Error('Error de borrado simulado'));
+
+    try {
+      await request(app.getHttpServer())
+        .post('/users/me/profile-picture')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segunda.png')
+        .expect(201);
+
+      expect(deleteSpy).toHaveBeenCalledWith(previousKey);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const currentKey = after.profilePicture;
+
+    expect(currentKey).not.toBeNull();
+    expect(currentKey).not.toBe(previousKey);
+
+    if (!currentKey) {
+      throw new Error('No se guardó la imagen nueva');
+    }
+
+    await request(app.getHttpServer())
+      .get(`/media/${currentKey}`)
+      .expect(200);
+
+    // Como simulamos un fallo, la imagen anterior todavía existe.
+    await request(app.getHttpServer())
+      .get(`/media/${previousKey}`)
+      .expect(200);
+  });
+
+  it('rechaza campos de texto adicionales en la subida', async () => {
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .field('description', 'No se permiten campos adicionales')
+      .attach('file', image, 'avatar.png')
+      .expect(400);
+
+    const storedUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+
+    expect(storedUser.profilePicture).toBeNull();
+  });
+
+  it('rechaza más de un archivo en la misma petición', async () => {
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primera.png')
+      .attach('file', image, 'segunda.png')
+      .expect(400);
+
+    const storedUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+
+    expect(storedUser.profilePicture).toBeNull();
+  });
+
+  it('conserva la imagen anterior si falla la transacción', async () => {
+    if (!uploadRoot) {
+      throw new Error('No se creó la carpeta temporal');
+    }
+
+    const image = await sharp({
+      create: {
+        width: 10,
+        height: 10,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-picture')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primera.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousKey = before.profilePicture;
+
+    if (!previousKey) {
+      throw new Error('No se guardó la imagen anterior');
+    }
+
+    const dataSource = app.get(DataSource);
+
+    const transactionSpy = jest
+      .spyOn(dataSource, 'transaction')
+      .mockRejectedValueOnce(new Error('Error de transacción simulado'));
+
+    try {
+      await request(app.getHttpServer())
+        .post('/users/me/profile-picture')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segunda.png')
+        .expect(500);
+    } finally {
+      transactionSpy.mockRestore();
+    }
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    expect(after.profilePicture).toBe(previousKey);
+
+    await request(app.getHttpServer())
+      .get(`/media/${previousKey}`)
+      .expect(200);
+
+    // La implementación conserva el archivo nuevo por precaución.
+    const files = await readdir(
+      join(uploadRoot, 'profile-pictures', firstUserId),
+    );
+
+    expect(files).toHaveLength(2);
+    expect(files).toContain(previousKey.split('/').at(-1));
   });
 });

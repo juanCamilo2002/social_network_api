@@ -9,12 +9,16 @@ import { Post } from './entities/post.entity';
 import { Repository } from 'typeorm';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PostResponse } from './interfaces/post-response.interface';
+import { ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from '../../config/env.validation';
+import { profilePictureUrl } from '../users/profile-picture/profile-picture-url';
 
 @Injectable()
 export class PostsService {
   constructor(
     @InjectRepository(Post)
     private readonly postsRepository: Repository<Post>,
+    private readonly config: ConfigService<EnvironmentVariables>,
   ) {}
 
   async findAll(): Promise<PostResponse[]> {
@@ -94,7 +98,10 @@ export class PostsService {
       author: {
         id: post.author.id,
         nickname: post.author.nickname,
-        profilePicture: post.author.profilePicture,
+        profilePicture: profilePictureUrl(
+          post.author.profilePicture,
+          this.config.getOrThrow('PUBLIC_MEDIA_BASE_URL', { infer: true }),
+        ),
       },
     };
   }

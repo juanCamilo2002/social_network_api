@@ -4,7 +4,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { DataSource, Repository } from 'typeorm';
-import * as request from 'supertest';
+import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { Post } from '../src/modules/posts/entities/post.entity';
@@ -25,6 +25,7 @@ describe('Posts con PostgreSQL (e2e)', () => {
     DB_HOST: process.env.DB_HOST,
     DB_NAME: process.env.DB_NAME,
     JWT_SECRET: process.env.JWT_SECRET,
+    PUBLIC_MEDIA_BASE_URL: process.env.PUBLIC_MEDIA_BASE_URL,
   };
 
   beforeAll(async () => {
@@ -33,6 +34,7 @@ describe('Posts con PostgreSQL (e2e)', () => {
     process.env.DB_HOST = '127.0.0.1';
     process.env.DB_NAME = 'social_network_test';
     process.env.JWT_SECRET = 'test-secret-only-for-posts-e2e-123456';
+    process.env.PUBLIC_MEDIA_BASE_URL = 'http://localhost:3000/media/';
 
     // Importamos después de configurar el entorno, porque AppModule
     // inicializa ConfigModule al cargarse.
@@ -433,5 +435,25 @@ describe('Posts con PostgreSQL (e2e)', () => {
       .delete('/posts/no-es-un-uuid')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(400);
+  });
+
+  it('convierte la clave de la foto del autor en una URL pública', async () => {
+    if (!userId) {
+      throw new Error('No se creó el usuario de prueba');
+    }
+
+    const key = `profile-pictures/${userId}/${randomUUID()}.png`;
+
+    await usersRepository.update({ id: userId }, { profilePicture: key });
+
+    const response = await request(app.getHttpServer())
+      .post('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ content: 'Publicación de prueba' })
+      .expect(201);
+
+    expect(response.body.author.profilePicture).toBe(
+      `http://localhost:3000/media/${key}`,
+    );
   });
 });

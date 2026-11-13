@@ -12,6 +12,7 @@ import {
   validateSync,
 } from 'class-validator';
 import { parseAllowedOrigins } from './cors-origins';
+import { parsePublicMediaUrl } from './public-media-url';
 
 enum Environment {
   Development = 'development',
@@ -72,6 +73,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   CORS_ALLOWED_ORIGINS!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  PUBLIC_MEDIA_BASE_URL!: string;
 }
 
 export function validate(config: Record<string, unknown>) {
@@ -86,6 +91,10 @@ export function validate(config: Record<string, unknown>) {
   }
 
   parseAllowedOrigins(validatedConfig.CORS_ALLOWED_ORIGINS);
+
+  validatedConfig.PUBLIC_MEDIA_BASE_URL = parsePublicMediaUrl(
+    validatedConfig.PUBLIC_MEDIA_BASE_URL,
+  );
 
   return validatedConfig;
 }

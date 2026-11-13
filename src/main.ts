@@ -3,11 +3,13 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from './config/env.validation';
-import { configureCors } from './config/cors.config';
 import { parseAllowedOrigins } from './config/cors-origins';
+import { LOCAL_UPLOAD_ROOT } from './modules/storage/storage.paths';
+import { configureHttp } from './config/http.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -21,7 +23,7 @@ async function bootstrap() {
     config.getOrThrow('CORS_ALLOWED_ORIGINS', { infer: true }),
   );
 
-  configureCors(app, allowedOrigins);
+  configureHttp(app, allowedOrigins, LOCAL_UPLOAD_ROOT);
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

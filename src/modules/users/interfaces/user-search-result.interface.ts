@@ -3,5 +3,5 @@ export interface UserSearchResult {
   nickname: string;
   name: string;
   lastName: string;
-  profilePicture: string;
+  profilePicture: string | null;
 }
