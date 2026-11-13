@@ -2,7 +2,7 @@ import { Controller, Get, INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import * as request from 'supertest';
+import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { Public } from '../src/modules/auth/decorators/public.decorator';

@@ -1,6 +1,6 @@
 import { Controller, Get, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import * as request from 'supertest';
+import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { configureCors } from '../src/config/cors.config';
