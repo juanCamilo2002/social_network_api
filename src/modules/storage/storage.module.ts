@@ -1,13 +1,15 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
 import { STORAGE_SERVICE } from './storage.interface';
-import { LocalStorageService } from './local/local-storage.service';
-import { LOCAL_UPLOAD_ROOT } from './storage.paths';
+import { createStorageService } from './storage.factory';
 
 @Module({
   providers: [
     {
       provide: STORAGE_SERVICE,
-      useFactory: () => new LocalStorageService(LOCAL_UPLOAD_ROOT),
+      inject: [ConfigService],
+      useFactory: createStorageService,
     },
   ],
   exports: [STORAGE_SERVICE],

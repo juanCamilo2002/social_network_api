@@ -38,6 +38,7 @@ describe('Búsqueda de usuarios (e2e)', () => {
     JWT_SECRET: process.env.JWT_SECRET,
     CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS,
     PUBLIC_MEDIA_BASE_URL: process.env.PUBLIC_MEDIA_BASE_URL,
+    STORAGE_DRIVER: process.env.STORAGE_DRIVER,
   };
 
   beforeAll(async () => {
@@ -47,6 +48,7 @@ describe('Búsqueda de usuarios (e2e)', () => {
     process.env.JWT_SECRET = 'test-secret-only-for-users-e2e-123456';
     process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:5173';
     process.env.PUBLIC_MEDIA_BASE_URL = 'http://localhost:3000/media/';
+    process.env.STORAGE_DRIVER = 'local';
 
     uploadRoot = await mkdtemp(join(tmpdir(), 'social-network-upload-e2e-'));
     const testUploadRoot = uploadRoot;
@@ -65,7 +67,7 @@ describe('Búsqueda de usuarios (e2e)', () => {
 
     app = moduleRef.createNestApplication();
 
-    configureHttp(app, ['http://localhost:5173'], testUploadRoot);
+    configureHttp(app, ['http://localhost:5173'], testUploadRoot, 'local');
 
     app.useGlobalPipes(
       new ValidationPipe({
@@ -861,9 +863,7 @@ describe('Búsqueda de usuarios (e2e)', () => {
 
     expect(after.profilePicture).toBe(previousKey);
 
-    await request(app.getHttpServer())
-      .get(`/media/${previousKey}`)
-      .expect(200);
+    await request(app.getHttpServer()).get(`/media/${previousKey}`).expect(200);
   });
 
   it('conserva la nueva imagen si falla el borrado de la anterior', async () => {
@@ -919,14 +919,10 @@ describe('Búsqueda de usuarios (e2e)', () => {
       throw new Error('No se guardó la imagen nueva');
     }
 
-    await request(app.getHttpServer())
-      .get(`/media/${currentKey}`)
-      .expect(200);
+    await request(app.getHttpServer()).get(`/media/${currentKey}`).expect(200);
 
     // Como simulamos un fallo, la imagen anterior todavía existe.
-    await request(app.getHttpServer())
-      .get(`/media/${previousKey}`)
-      .expect(200);
+    await request(app.getHttpServer()).get(`/media/${previousKey}`).expect(200);
   });
 
   it('rechaza campos de texto adicionales en la subida', async () => {
@@ -1030,9 +1026,7 @@ describe('Búsqueda de usuarios (e2e)', () => {
 
     expect(after.profilePicture).toBe(previousKey);
 
-    await request(app.getHttpServer())
-      .get(`/media/${previousKey}`)
-      .expect(200);
+    await request(app.getHttpServer()).get(`/media/${previousKey}`).expect(200);
 
     // La implementación conserva el archivo nuevo por precaución.
     const files = await readdir(

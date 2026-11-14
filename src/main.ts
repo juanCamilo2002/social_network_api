@@ -23,7 +23,12 @@ async function bootstrap() {
     config.getOrThrow('CORS_ALLOWED_ORIGINS', { infer: true }),
   );
 
-  configureHttp(app, allowedOrigins, LOCAL_UPLOAD_ROOT);
+  configureHttp(
+    app,
+    allowedOrigins,
+    LOCAL_UPLOAD_ROOT,
+    config.getOrThrow('STORAGE_DRIVER', { infer: true }),
+  );
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

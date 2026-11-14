@@ -25,6 +25,7 @@
     "migration:show": "yarn typeorm migration:show -d src/database/data-source.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1169.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^12.1.1",
     "@nestjs/core": "^11.0.1",

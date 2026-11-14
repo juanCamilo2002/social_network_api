@@ -1,9 +1,18 @@
 import { isUUID } from 'class-validator';
+import { randomUUID } from 'node:crypto';
+
+import type { ImageContentType } from './storage.interface';
 
 export interface ProfilePictureKeyParts {
   userId: string;
   fileName: string;
 }
+
+const extensions: Record<ImageContentType, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
 
 /**
  * Interprets only keys generated for profile photos.
@@ -26,4 +35,28 @@ export function parseProfilePictureKey(
   }
 
   return { userId, fileName };
+}
+
+export function createProfilePictureKey(
+  userId: string,
+  contentType: ImageContentType,
+): { key: string; fileName: string } {
+  if (!isUUID(userId)) {
+    throw new Error('Invalid user ID');
+  }
+
+  const extension = Object.hasOwn(extensions, contentType)
+    ? extensions[contentType]
+    : undefined;
+
+  if (!extension) {
+    throw new Error('Unsupported image content type');
+  }
+
+  const fileName = `${randomUUID()}.${extension}`;
+
+  return {
+    key: `profile-pictures/${userId}/${fileName}`,
+    fileName,
+  };
 }

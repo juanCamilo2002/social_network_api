@@ -26,6 +26,7 @@ describe('Posts con PostgreSQL (e2e)', () => {
     DB_NAME: process.env.DB_NAME,
     JWT_SECRET: process.env.JWT_SECRET,
     PUBLIC_MEDIA_BASE_URL: process.env.PUBLIC_MEDIA_BASE_URL,
+    STORAGE_DRIVER: process.env.STORAGE_DRIVER,
   };
 
   beforeAll(async () => {
@@ -35,6 +36,7 @@ describe('Posts con PostgreSQL (e2e)', () => {
     process.env.DB_NAME = 'social_network_test';
     process.env.JWT_SECRET = 'test-secret-only-for-posts-e2e-123456';
     process.env.PUBLIC_MEDIA_BASE_URL = 'http://localhost:3000/media/';
+    process.env.STORAGE_DRIVER = 'local';
 
     // Importamos después de configurar el entorno, porque AppModule
     // inicializa ConfigModule al cargarse.

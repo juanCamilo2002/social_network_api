@@ -1,8 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-
-import { isUUID } from 'class-validator';
 
 import {
   ImageContentType,
@@ -10,13 +7,10 @@ import {
   StorageService,
 } from '../storage.interface';
 
-import { parseProfilePictureKey } from '../profile-picture-key';
-
-const extensions: Record<ImageContentType, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-};
+import {
+  parseProfilePictureKey,
+  createProfilePictureKey,
+} from '../profile-picture-key';
 
 export class LocalStorageService implements StorageService {
   private readonly rootDirectory: string;
@@ -30,19 +24,8 @@ export class LocalStorageService implements StorageService {
     content: Buffer,
     contentType: ImageContentType,
   ): Promise<StoredFile> {
-    if (!isUUID(userId)) {
-      throw new Error('Invalid user ID');
-    }
+    const { key, fileName } = createProfilePictureKey(userId, contentType);
 
-    const extension = extensions[contentType];
-
-    if (!extension) {
-      throw new Error('Unsupported image content type');
-    }
-
-    const fileName = `${randomUUID()}.${extension}`;
-
-    const key = `profile-pictures/${userId}/${fileName}`;
     const directory = join(this.rootDirectory, 'profile-pictures', userId);
     const filePath = join(directory, fileName);
 
