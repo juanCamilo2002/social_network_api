@@ -1,8 +1,8 @@
 import sharp from 'sharp';
 
-import { processProfilePicture } from './profile-picture.processor';
+import { processProfileImage } from './profile-image.processor';
 
-describe('processProfilePicture', () => {
+describe('processProfileImage', () => {
   it('aplica la orientación y elimina los metadatos EXIF', async () => {
     const original = await sharp({
       create: {
@@ -21,7 +21,7 @@ describe('processProfilePicture', () => {
     expect(originalMetadata.orientation).toBe(6);
     expect(originalMetadata.exif).toBeDefined();
 
-    const processed = await processProfilePicture(original);
+    const processed = await processProfileImage(original);
     const resultMetadata = await sharp(processed.content).metadata();
 
     expect(processed.contentType).toBe('image/jpeg');
@@ -55,7 +55,7 @@ describe('processProfilePicture', () => {
         .toFormat(format)
         .toBuffer();
 
-      const processed = await processProfilePicture(original);
+      const processed = await processProfileImage(original);
       const metadata = await sharp(processed.content).metadata();
 
       expect(processed.contentType).toBe(expectedContentType);
@@ -67,7 +67,7 @@ describe('processProfilePicture', () => {
 
   it('rechaza contenido que no es una imagen válida', async () => {
     await expect(
-      processProfilePicture(Buffer.from('no es una imagen')),
+      processProfileImage(Buffer.from('no es una imagen')),
     ).rejects.toThrow();
   });
 
@@ -83,7 +83,7 @@ describe('processProfilePicture', () => {
       .png()
       .toBuffer();
 
-    const processed = await processProfilePicture(original);
+    const processed = await processProfileImage(original);
     const metadata = await sharp(processed.content).metadata();
 
     expect(metadata.width).toBe(2300);

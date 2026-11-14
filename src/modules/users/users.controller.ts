@@ -19,7 +19,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { MAX_PROFILE_PICTURE_BYTES } from './profile-picture/profile-picture.validator';
+import { MAX_PROFILE_IMAGE_BYTES } from './profile-image/profile-image.validator';
 
 @Controller('users')
 export class UsersController {
@@ -52,7 +52,7 @@ export class UsersController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: MAX_PROFILE_PICTURE_BYTES + 1,
+        fileSize: MAX_PROFILE_IMAGE_BYTES + 1,
         files: 1,
         fields: 0,
       },
@@ -73,7 +73,7 @@ export class UsersController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        fileSize: MAX_PROFILE_PICTURE_BYTES + 1,
+        fileSize: MAX_PROFILE_IMAGE_BYTES + 1,
         files: 1,
         fields: 0,
       },

@@ -11,7 +11,7 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { PostResponse } from './interfaces/post-response.interface';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../../config/env.validation';
-import { profilePictureUrl } from '../users/profile-picture/profile-picture-url';
+import { profileImageUrl } from '../users/profile-image/profile-image-url';
 
 @Injectable()
 export class PostsService {
@@ -98,9 +98,10 @@ export class PostsService {
       author: {
         id: post.author.id,
         nickname: post.author.nickname,
-        profilePicture: profilePictureUrl(
+        profilePicture: profileImageUrl(
           post.author.profilePicture,
           this.config.getOrThrow('PUBLIC_MEDIA_BASE_URL', { infer: true }),
+          'picture',
         ),
       },
     };

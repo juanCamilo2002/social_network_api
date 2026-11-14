@@ -2,12 +2,12 @@ import { BadRequestException } from '@nestjs/common';
 import sharp from 'sharp';
 
 import {
-  MAX_PROFILE_PICTURE_PIXELS,
-  validateProfilePicture,
-} from './profile-picture.validator';
+  MAX_PROFILE_IMAGE_PIXELS,
+  validateProfileImage,
+} from './profile-image.validator';
 import { ImageContentType } from '../../storage/storage.interface';
 
-interface ProcessedProfilePicture {
+interface ProcessedProfileImage {
   content: Buffer;
   contentType: ImageContentType;
 }
@@ -18,15 +18,15 @@ const outputFormats = {
   'image/webp': 'webp',
 } as const;
 
-export async function processProfilePicture(
+export async function processProfileImage(
   content: Buffer,
-): Promise<ProcessedProfilePicture> {
-  const contentType = await validateProfilePicture(content);
+): Promise<ProcessedProfileImage> {
+  const contentType = await validateProfileImage(content);
 
   try {
     const processedContent = await sharp(content, {
       failOn: 'error',
-      limitInputPixels: MAX_PROFILE_PICTURE_PIXELS,
+      limitInputPixels: MAX_PROFILE_IMAGE_PIXELS,
     })
       .autoOrient()
       .toFormat(outputFormats[contentType])
