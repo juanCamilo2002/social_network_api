@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { ImageContentType } from './storage.interface';
 
 import {
-  createProfilePictureKey,
-  parseProfilePictureKey,
-} from './profile-picture-key';
+  createProfileImageKey,
+  parseProfileImageKey,
+} from './profile-image-key';
 
-describe('parseProfilePictureKey', () => {
+describe('Claves de avatar', () => {
   it.each(['jpg', 'png', 'webp'])(
     'acepta una clave válida con extensión %s',
     (extension) => {
@@ -14,7 +14,10 @@ describe('parseProfilePictureKey', () => {
       const fileName = `${randomUUID()}.${extension}`;
 
       expect(
-        parseProfilePictureKey(`profile-pictures/${userId}/${fileName}`),
+        parseProfileImageKey(
+          `profile-pictures/${userId}/${fileName}`,
+          'picture',
+        ),
       ).toEqual({ userId, fileName });
     },
   );
@@ -28,7 +31,7 @@ describe('parseProfilePictureKey', () => {
     `profile-pictures/${randomUUID()}/${randomUUID()}.png/extra`,
     'https://example.com/avatar.png',
   ])('rechaza la clave inválida %s', (key) => {
-    expect(parseProfilePictureKey(key)).toBeNull();
+    expect(parseProfileImageKey(key, 'picture')).toBeNull();
   });
 
   it.each([
@@ -38,23 +41,27 @@ describe('parseProfilePictureKey', () => {
   ] as const)('genera una clave válida para %s', (contentType, extension) => {
     const userId = randomUUID();
 
-    const { key, fileName } = createProfilePictureKey(userId, contentType);
+    const { key, fileName } = createProfileImageKey(
+      userId,
+      contentType,
+      'picture',
+    );
 
     expect(fileName).toMatch(new RegExp(`^[0-9a-f-]+\\.${extension}$`, 'i'));
-    expect(parseProfilePictureKey(key)).toEqual({ userId, fileName });
+    expect(parseProfileImageKey(key, 'picture')).toEqual({ userId, fileName });
   });
 
   it('rechaza un usuario inválido al generar la clave', () => {
-    expect(() => createProfilePictureKey('../otro', 'image/png')).toThrow(
-      'Invalid user ID',
-    );
+    expect(() =>
+      createProfileImageKey('../otro', 'image/png', 'picture'),
+    ).toThrow('Invalid user ID');
   });
 
   it('rechaza un tipo no permitido al generar la clave', () => {
     const invalidType = 'image/svg+xml' as ImageContentType;
 
-    expect(() => createProfilePictureKey(randomUUID(), invalidType)).toThrow(
-      'Unsupported image content type',
-    );
+    expect(() =>
+      createProfileImageKey(randomUUID(), invalidType, 'picture'),
+    ).toThrow('Unsupported image content type');
   });
 });

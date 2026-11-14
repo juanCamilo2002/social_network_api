@@ -3,9 +3,9 @@ import sharp from 'sharp';
 
 import { ImageContentType } from '../../storage/storage.interface';
 
-export const MAX_PROFILE_PICTURE_BYTES = 5 * 1024 * 1024;
+export const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
 
-export const MAX_PROFILE_PICTURE_PIXELS = 16_000_000;
+export const MAX_PROFILE_IMAGE_PIXELS = 16_000_000;
 
 const allowedFormats: Record<string, ImageContentType> = {
   jpeg: 'image/jpeg',
@@ -13,21 +13,21 @@ const allowedFormats: Record<string, ImageContentType> = {
   webp: 'image/webp',
 };
 
-export async function validateProfilePicture(
+export async function validateProfileImage(
   content: Buffer,
 ): Promise<ImageContentType> {
   if (content.length === 0) {
     throw new BadRequestException('Image is empty');
   }
 
-  if (content.length > MAX_PROFILE_PICTURE_BYTES) {
+  if (content.length > MAX_PROFILE_IMAGE_BYTES) {
     throw new BadRequestException('Image exceeds the 5 MB limit');
   }
 
   try {
     const image = sharp(content, {
       failOn: 'error',
-      limitInputPixels: MAX_PROFILE_PICTURE_PIXELS,
+      limitInputPixels: MAX_PROFILE_IMAGE_PIXELS,
     });
 
     const metadata = await image.metadata();
@@ -43,7 +43,7 @@ export async function validateProfilePicture(
       throw new BadRequestException('Invalid image dimensions');
     }
 
-    if (metadata.width * metadata.height > MAX_PROFILE_PICTURE_PIXELS) {
+    if (metadata.width * metadata.height > MAX_PROFILE_IMAGE_PIXELS) {
       throw new BadRequestException('Image dimensions are too large');
     }
 

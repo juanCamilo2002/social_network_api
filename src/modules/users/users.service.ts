@@ -14,11 +14,11 @@ import { UserProfile } from './interfaces/user-profile.interface';
 import { UpdateOwnProfileDto } from './dto/update-own-profile.dto';
 import { ConfigService } from '@nestjs/config';
 import { EnvironmentVariables } from '../../config/env.validation';
-import { profilePictureUrl } from './profile-picture/profile-picture-url';
+import { profileImageUrl } from './profile-image/profile-image-url';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
-import { processProfilePicture } from './profile-picture/profile-picture.processor';
-import { profileBannerUrl } from './profile-banner/profile-banner-url';
-import { parseProfileBannerKey } from '../storage/profile-banner-key';
+import { processProfileImage } from './profile-image/profile-image.processor';
+import { parseProfileImageKey } from '../storage/profile-image-key';
+import type { ProfileImageKind } from '../storage/profile-image-key';
 
 @Injectable()
 export class UsersService {
@@ -66,7 +66,7 @@ export class UsersService {
 
     return users.map((user) => ({
       ...user,
-      profilePicture: this.getProgilePictureUrl(user.profilePicture),
+      profilePicture: this.getProfileImageUrl(user.profilePicture, 'picture'),
     }));
   }
 
@@ -89,8 +89,8 @@ export class UsersService {
 
     return {
       ...user,
-      profilePicture: this.getProgilePictureUrl(user.profilePicture),
-      banner: this.getProfileBannerUrl(user.banner),
+      profilePicture: this.getProfileImageUrl(user.profilePicture, 'picture'),
+      banner: this.getProfileImageUrl(user.banner, 'banner'),
     };
   }
 
@@ -113,8 +113,8 @@ export class UsersService {
 
     return {
       ...user,
-      profilePicture: this.getProgilePictureUrl(user.profilePicture),
-      banner: this.getProfileBannerUrl(user.banner),
+      profilePicture: this.getProfileImageUrl(user.profilePicture, 'picture'),
+      banner: this.getProfileImageUrl(user.banner, 'banner'),
     };
   }
 
@@ -157,7 +157,7 @@ export class UsersService {
     userId: string,
     content: Buffer,
   ): Promise<UserProfile> {
-    const processed = await processProfilePicture(content);
+    const processed = await processProfileImage(content);
 
     await this.findOwnProfile(userId);
 
@@ -214,7 +214,7 @@ export class UsersService {
     userId: string,
     content: Buffer,
   ): Promise<UserProfile> {
-    const processed = await processProfilePicture(content);
+    const processed = await processProfileImage(content);
 
     await this.findOwnProfile(userId);
 
@@ -252,7 +252,7 @@ export class UsersService {
     }
 
     const previousKey = previousBanner
-      ? parseProfileBannerKey(previousBanner)
+      ? parseProfileImageKey(previousBanner, 'banner')
       : null;
 
     if (
@@ -273,17 +273,14 @@ export class UsersService {
     return this.findOwnProfile(userId);
   }
 
-  private getProgilePictureUrl(value: string | null): string | null {
-    return profilePictureUrl(
+  private getProfileImageUrl(
+    value: string | null,
+    kind: ProfileImageKind,
+  ): string | null {
+    return profileImageUrl(
       value,
       this.config.getOrThrow('PUBLIC_MEDIA_BASE_URL', { infer: true }),
-    );
-  }
-
-  private getProfileBannerUrl(value: string | null): string | null {
-    return profileBannerUrl(
-      value,
-      this.config.getOrThrow('PUBLIC_MEDIA_BASE_URL', { infer: true }),
+      kind,
     );
   }
 }

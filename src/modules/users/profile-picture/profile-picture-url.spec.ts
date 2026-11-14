@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { profilePictureUrl } from './profile-picture-url';
+import { profileImageUrl } from '../profile-image/profile-image-url';
 
 describe('profilePictureUrl', () => {
   const baseUrl = 'http://localhost:3000/media/';
@@ -10,7 +10,7 @@ describe('profilePictureUrl', () => {
     const fileId = randomUUID();
     const key = `profile-pictures/${userId}/${fileId}.png`;
 
-    expect(profilePictureUrl(key, baseUrl)).toBe(
+    expect(profileImageUrl(key, baseUrl, 'picture')).toBe(
       `http://localhost:3000/media/${key}`,
     );
   });
@@ -18,16 +18,22 @@ describe('profilePictureUrl', () => {
   it('conserva una URL existente', () => {
     const existingUrl = 'https://example.com/avatar.png';
 
-    expect(profilePictureUrl(existingUrl, baseUrl)).toBe(existingUrl);
+    expect(profileImageUrl(existingUrl, baseUrl, 'picture')).toBe(existingUrl);
   });
 
   it('conserva null cuando el usuario no tiene imagen', () => {
-    expect(profilePictureUrl(null, baseUrl)).toBeNull();
+    expect(profileImageUrl(null, baseUrl, 'picture')).toBeNull();
   });
 
   it('no convierte claves que no tienen el formato esperado', () => {
     const value = 'profile-pictures/../archivo.png';
 
-    expect(profilePictureUrl(value, baseUrl)).toBe(value);
+    expect(profileImageUrl(value, baseUrl, 'picture')).toBe(value);
+  });
+
+  it('no interpreta una clave de banner como avatar', () => {
+    const key = `profile-banners/${randomUUID()}/${randomUUID()}.png`;
+
+    expect(profileImageUrl(key, baseUrl, 'picture')).toBe(key);
   });
 });

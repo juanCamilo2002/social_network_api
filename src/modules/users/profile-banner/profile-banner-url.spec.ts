@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { profileBannerUrl } from './profile-banner-url';
+import { profileImageUrl } from '../profile-image/profile-image-url';
 
 describe('profileBannerUrl', () => {
   const baseUrl = 'http://localhost:3000/media/';
@@ -8,7 +8,7 @@ describe('profileBannerUrl', () => {
   it('convierte una clave de banner en una URL absoluta', () => {
     const key = `profile-banners/${randomUUID()}/${randomUUID()}.png`;
 
-    expect(profileBannerUrl(key, baseUrl)).toBe(
+    expect(profileImageUrl(key, baseUrl, 'banner')).toBe(
       `http://localhost:3000/media/${key}`,
     );
   });
@@ -16,16 +16,16 @@ describe('profileBannerUrl', () => {
   it('conserva una URL anterior', () => {
     const existingUrl = 'https://example.com/banner.png';
 
-    expect(profileBannerUrl(existingUrl, baseUrl)).toBe(existingUrl);
+    expect(profileImageUrl(existingUrl, baseUrl, 'banner')).toBe(existingUrl);
   });
 
   it('conserva null cuando no hay banner', () => {
-    expect(profileBannerUrl(null, baseUrl)).toBeNull();
+    expect(profileImageUrl(null, baseUrl, 'banner')).toBeNull();
   });
 
   it('no interpreta una clave de avatar como banner', () => {
     const key = `profile-pictures/${randomUUID()}/${randomUUID()}.png`;
 
-    expect(profileBannerUrl(key, baseUrl)).toBe(key);
+    expect(profileImageUrl(key, baseUrl, 'banner')).toBe(key);
   });
 });

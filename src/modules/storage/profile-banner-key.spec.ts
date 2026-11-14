@@ -1,13 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
 import {
-  createProfileBannerKey,
-  parseProfileBannerKey,
-} from './profile-banner-key';
-import {
-  createProfilePictureKey,
-  parseProfilePictureKey,
-} from './profile-picture-key';
+  createProfileImageKey,
+  parseProfileImageKey,
+} from './profile-image-key';
 import type { ImageContentType } from './storage.interface';
 
 describe('Claves de banner', () => {
@@ -20,24 +16,28 @@ describe('Claves de banner', () => {
     (contentType, extension) => {
       const userId = randomUUID();
 
-      const { key, fileName } = createProfileBannerKey(userId, contentType);
+      const { key, fileName } = createProfileImageKey(
+        userId,
+        contentType,
+        'banner',
+      );
 
       expect(key).toBe(`profile-banners/${userId}/${fileName}`);
       expect(fileName).toMatch(new RegExp(`^[0-9a-f-]+\\.${extension}$`, 'i'));
-      expect(parseProfileBannerKey(key)).toEqual({ userId, fileName });
+      expect(parseProfileImageKey(key, 'banner')).toEqual({ userId, fileName });
     },
   );
 
   it('no interpreta una clave de avatar como banner', () => {
-    const { key } = createProfilePictureKey(randomUUID(), 'image/png');
+    const { key } = createProfileImageKey(randomUUID(), 'image/png', 'picture');
 
-    expect(parseProfileBannerKey(key)).toBeNull();
+    expect(parseProfileImageKey(key, 'banner')).toBeNull();
   });
 
   it('no interpreta una clave de banner como avatar', () => {
-    const { key } = createProfileBannerKey(randomUUID(), 'image/png');
+    const { key } = createProfileImageKey(randomUUID(), 'image/png', 'banner');
 
-    expect(parseProfilePictureKey(key)).toBeNull();
+    expect(parseProfileImageKey(key, 'picture')).toBeNull();
   });
 
   it.each([
@@ -48,20 +48,20 @@ describe('Claves de banner', () => {
     `profile-banners/${randomUUID()}/${randomUUID()}.svg`,
     `profile-banners/${randomUUID()}/${randomUUID()}.png/extra`,
   ])('rechaza la clave inválida %s', (key) => {
-    expect(parseProfileBannerKey(key)).toBeNull();
+    expect(parseProfileImageKey(key, 'banner')).toBeNull();
   });
 
   it('rechaza un usuario inválido al generar una clave', () => {
-    expect(() => createProfileBannerKey('../otro', 'image/png')).toThrow(
-      'Invalid user ID',
-    );
+    expect(() =>
+      createProfileImageKey('../otro', 'image/png', 'banner'),
+    ).toThrow('Invalid user ID');
   });
 
   it('rechaza un tipo de imagen no permitido', () => {
     const invalidType = 'image/svg+xml' as ImageContentType;
 
-    expect(() => createProfileBannerKey(randomUUID(), invalidType)).toThrow(
-      'Unsupported image content type',
-    );
+    expect(() =>
+      createProfileImageKey(randomUUID(), invalidType, 'banner'),
+    ).toThrow('Unsupported image content type');
   });
 });
