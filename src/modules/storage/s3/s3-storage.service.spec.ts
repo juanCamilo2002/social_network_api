@@ -130,4 +130,65 @@ describe('S3StorageService', () => {
       'S3 no disponible',
     );
   });
+
+  it('envía un banner a S3 con el prefijo correcto', async () => {
+    const userId = randomUUID();
+    const content = Buffer.from('banner de prueba');
+
+    const result = await storage.saveProfileBanner(
+      userId,
+      content,
+      'image/png',
+    );
+
+    expect(result.key).toMatch(
+      new RegExp(`^profile-banners/${userId}/[0-9a-f-]+\\.png$`, 'i'),
+    );
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+
+    const command = sendMock.mock.calls[0][0];
+
+    expect(command).toBeInstanceOf(PutObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: bucket,
+      Key: result.key,
+      Body: content,
+      ContentType: 'image/png',
+    });
+  });
+
+  it('envía la eliminación de una clave válida de banner', async () => {
+    const key = `profile-banners/${randomUUID()}/${randomUUID()}.png`;
+
+    await storage.deleteProfileBanner(key);
+
+    const command = sendMock.mock.calls[0][0];
+
+    expect(command).toBeInstanceOf(DeleteObjectCommand);
+    expect(command.input).toEqual({
+      Bucket: bucket,
+      Key: key,
+    });
+  });
+
+  it('no acepta una clave de avatar al eliminar un banner', async () => {
+    const key = `profile-pictures/${randomUUID()}/${randomUUID()}.png`;
+
+    await expect(storage.deleteProfileBanner(key)).rejects.toThrow(
+      'Invalid profile banner key',
+    );
+
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('no acepta una clave de banner al eliminar un avatar', async () => {
+    const key = `profile-banners/${randomUUID()}/${randomUUID()}.png`;
+
+    await expect(storage.deleteProfilePicture(key)).rejects.toThrow(
+      'Invalid profile picture key',
+    );
+
+    expect(sendMock).not.toHaveBeenCalled();
+  });
 });

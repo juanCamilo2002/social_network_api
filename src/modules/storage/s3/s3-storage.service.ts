@@ -5,14 +5,15 @@ import {
 } from '@aws-sdk/client-s3';
 
 import {
-  createProfilePictureKey,
-  parseProfilePictureKey,
-} from '../profile-picture-key';
-import {
   ImageContentType,
   StoredFile,
   StorageService,
 } from '../storage.interface';
+import {
+  createProfileImageKey,
+  parseProfileImageKey,
+  ProfileImageKind,
+} from '../profile-image-key';
 
 export class S3StorageService implements StorageService {
   constructor(
@@ -25,7 +26,32 @@ export class S3StorageService implements StorageService {
     content: Buffer,
     contentType: ImageContentType,
   ): Promise<StoredFile> {
-    const { key } = createProfilePictureKey(userId, contentType);
+    return this.saveImage(userId, content, contentType, 'picture');
+  }
+
+  async saveProfileBanner(
+    userId: string,
+    content: Buffer,
+    contentType: ImageContentType,
+  ): Promise<StoredFile> {
+    return this.saveImage(userId, content, contentType, 'banner');
+  }
+
+  async deleteProfilePicture(key: string): Promise<void> {
+    return this.deleteImage(key, 'picture');
+  }
+
+  async deleteProfileBanner(key: string): Promise<void> {
+    return this.deleteImage(key, 'banner');
+  }
+
+  private async saveImage(
+    userId: string,
+    content: Buffer,
+    contentType: ImageContentType,
+    kind: ProfileImageKind,
+  ): Promise<StoredFile> {
+    const { key } = createProfileImageKey(userId, contentType, kind);
 
     await this.client.send(
       new PutObjectCommand({
@@ -39,9 +65,16 @@ export class S3StorageService implements StorageService {
     return { key };
   }
 
-  async deleteProfilePicture(key: string): Promise<void> {
-    if (!parseProfilePictureKey(key)) {
-      throw new Error('Invalid profile picture key');
+  private async deleteImage(
+    key: string,
+    kind: ProfileImageKind,
+  ): Promise<void> {
+    if (!parseProfileImageKey(key, kind)) {
+      throw new Error(
+        kind === 'picture'
+          ? 'Invalid profile picture key'
+          : 'Invalid profile banner key',
+      );
     }
 
     await this.client.send(

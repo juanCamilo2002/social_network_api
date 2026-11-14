@@ -98,4 +98,58 @@ describe('LocalStorageService', () => {
       ),
     ).rejects.toThrow('Invalid user ID');
   });
+
+  it('guarda y elimina un banner', async () => {
+    const content = Buffer.from('banner de prueba');
+
+    const result = await storage.saveProfileBanner(
+      userId,
+      content,
+      'image/png',
+    );
+
+    expect(result.key).toMatch(
+      new RegExp(`^profile-banners/${userId}/[0-9a-f-]+\\.png$`, 'i'),
+    );
+
+    const filePath = join(rootDirectory, ...result.key.split('/'));
+
+    expect(await readFile(filePath)).toEqual(content);
+
+    await storage.deleteProfileBanner(result.key);
+
+    await expect(stat(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('no permite eliminar un avatar mediante la operación de banner', async () => {
+    const picture = await storage.saveProfilePicture(
+      userId,
+      Buffer.from('avatar'),
+      'image/png',
+    );
+
+    await expect(storage.deleteProfileBanner(picture.key)).rejects.toThrow(
+      'Invalid profile banner key',
+    );
+
+    const filePath = join(rootDirectory, ...picture.key.split('/'));
+
+    expect(await readFile(filePath)).toEqual(Buffer.from('avatar'));
+  });
+
+  it('no permite eliminar un banner mediante la operación de avatar', async () => {
+    const banner = await storage.saveProfileBanner(
+      userId,
+      Buffer.from('banner'),
+      'image/png',
+    );
+
+    await expect(storage.deleteProfilePicture(banner.key)).rejects.toThrow(
+      'Invalid profile picture key',
+    );
+
+    const filePath = join(rootDirectory, ...banner.key.split('/'));
+
+    expect(await readFile(filePath)).toEqual(Buffer.from('banner'));
+  });
 });

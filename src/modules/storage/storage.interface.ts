@@ -23,4 +23,12 @@ export interface StorageService {
    * The implementation must reject keys that fall outside its scope.
    */
   deleteProfilePicture(key: string): Promise<void>;
+
+  saveProfileBanner(
+    userId: string,
+    content: Buffer,
+    contentType: ImageContentType,
+  ): Promise<StoredFile>;
+
+  deleteProfileBanner(key: string): Promise<void>;
 }

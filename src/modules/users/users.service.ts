@@ -17,6 +17,8 @@ import { EnvironmentVariables } from '../../config/env.validation';
 import { profilePictureUrl } from './profile-picture/profile-picture-url';
 import { STORAGE_SERVICE, StorageService } from '../storage/storage.interface';
 import { processProfilePicture } from './profile-picture/profile-picture.processor';
+import { profileBannerUrl } from './profile-banner/profile-banner-url';
+import { parseProfileBannerKey } from '../storage/profile-banner-key';
 
 @Injectable()
 export class UsersService {
@@ -88,6 +90,7 @@ export class UsersService {
     return {
       ...user,
       profilePicture: this.getProgilePictureUrl(user.profilePicture),
+      banner: this.getProfileBannerUrl(user.banner),
     };
   }
 
@@ -111,6 +114,7 @@ export class UsersService {
     return {
       ...user,
       profilePicture: this.getProgilePictureUrl(user.profilePicture),
+      banner: this.getProfileBannerUrl(user.banner),
     };
   }
 
@@ -206,8 +210,78 @@ export class UsersService {
     return this.findOwnProfile(userId);
   }
 
+  async updateProfileBanner(
+    userId: string,
+    content: Buffer,
+  ): Promise<UserProfile> {
+    const processed = await processProfilePicture(content);
+
+    await this.findOwnProfile(userId);
+
+    const storedFile = await this.storage.saveProfileBanner(
+      userId,
+      processed.content,
+      processed.contentType,
+    );
+
+    let previousBanner: string | null;
+
+    try {
+      previousBanner = await this.dataSource.transaction(async (manager) => {
+        const users = manager.getRepository(User);
+
+        const user = await users.findOne({
+          where: { id: userId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+
+        const previous = user.banner;
+
+        await users.update({ id: userId }, { banner: storedFile.key });
+
+        return previous;
+      });
+    } catch (error: unknown) {
+      this.logger.warn(`Profile banner may need cleanup: ${storedFile.key}`);
+
+      throw error;
+    }
+
+    const previousKey = previousBanner
+      ? parseProfileBannerKey(previousBanner)
+      : null;
+
+    if (
+      previousBanner &&
+      previousKey &&
+      previousKey.userId === userId &&
+      previousBanner !== storedFile.key
+    ) {
+      try {
+        await this.storage.deleteProfileBanner(previousBanner);
+      } catch {
+        this.logger.warn(
+          `Could not delete previous profile banner: ${previousBanner}`,
+        );
+      }
+    }
+
+    return this.findOwnProfile(userId);
+  }
+
   private getProgilePictureUrl(value: string | null): string | null {
     return profilePictureUrl(
+      value,
+      this.config.getOrThrow('PUBLIC_MEDIA_BASE_URL', { infer: true }),
+    );
+  }
+
+  private getProfileBannerUrl(value: string | null): string | null {
+    return profileBannerUrl(
       value,
       this.config.getOrThrow('PUBLIC_MEDIA_BASE_URL', { infer: true }),
     );
