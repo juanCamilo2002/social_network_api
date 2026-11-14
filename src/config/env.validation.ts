@@ -1,6 +1,7 @@
 import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 import { parseAllowedOrigins } from './cors-origins';
@@ -77,6 +79,21 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   PUBLIC_MEDIA_BASE_URL!: string;
+
+  @IsIn(['local', 's3'])
+  STORAGE_DRIVER!: 'local' | 's3';
+
+  @ValidateIf((config: EnvironmentVariables) => config.STORAGE_DRIVER === 's3')
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\S+$/)
+  AWS_REGION?: string;
+
+  @ValidateIf((config: EnvironmentVariables) => config.STORAGE_DRIVER === 's3')
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\S+$/)
+  S3_BUCKET?: string;
 }
 
 export function validate(config: Record<string, unknown>) {
@@ -95,6 +112,13 @@ export function validate(config: Record<string, unknown>) {
   validatedConfig.PUBLIC_MEDIA_BASE_URL = parsePublicMediaUrl(
     validatedConfig.PUBLIC_MEDIA_BASE_URL,
   );
+
+  if (
+    validatedConfig.STORAGE_DRIVER === 's3' &&
+    new URL(validatedConfig.PUBLIC_MEDIA_BASE_URL).protocol !== 'https:'
+  ) {
+    throw new Error('PUBLIC_MEDIA_BASE_URL must use HTTPS when S3 is selected');
+  }
 
   return validatedConfig;
 }
