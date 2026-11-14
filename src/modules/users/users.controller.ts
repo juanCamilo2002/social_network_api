@@ -68,4 +68,25 @@ export class UsersController {
 
     return this.usersService.updateProfilePicture(user.id, file.buffer);
   }
+
+  @Post('me/profile-banner')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: MAX_PROFILE_PICTURE_BYTES + 1,
+        files: 1,
+        fields: 0,
+      },
+    }),
+  )
+  uploadProfileBanner(
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file?: { buffer: Buffer },
+  ): Promise<UserProfile> {
+    if (!file?.buffer) {
+      throw new BadRequestException('Profile banner file is required');
+    }
+
+    return this.usersService.updateProfileBanner(user.id, file.buffer);
+  }
 }

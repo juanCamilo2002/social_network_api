@@ -41,6 +41,19 @@ describe('Búsqueda de usuarios (e2e)', () => {
     STORAGE_DRIVER: process.env.STORAGE_DRIVER,
   };
 
+  async function createBannerTestImage(): Promise<Buffer> {
+    return sharp({
+      create: {
+        width: 12,
+        height: 6,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .png()
+      .toBuffer();
+  }
+
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
     process.env.DB_HOST = '127.0.0.1';
@@ -200,7 +213,8 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .query({ q: `sol_${suffix}` })
       .expect(200);
 
-    const resultIds = response.body.map((user: { id: string }) => user.id);
+    const results = response.body as { id: string }[];
+    const resultIds = results.map((user) => user.id);
 
     expect(resultIds).toContain(firstUserId);
     expect(resultIds).not.toContain(secondUserId);
@@ -213,9 +227,8 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .query({ q: `sol_${suffix}` })
       .expect(200);
 
-    const user = response.body.find(
-      (result: { id: string }) => result.id === firstUserId,
-    );
+    const results = response.body as { id: string }[];
+    const user = results.find((result) => result.id === firstUserId);
 
     expect(user).toBeDefined();
 
@@ -330,7 +343,9 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(response.body.id).toBe(secondUserId);
+    expect(response.body).toEqual(
+      expect.objectContaining({ id: secondUserId }),
+    );
 
     await request(app.getHttpServer())
       .get(`/users/by-nickname/sol__${suffix.slice(1)}`)
@@ -467,7 +482,9 @@ describe('Búsqueda de usuarios (e2e)', () => {
         .send({ biography })
         .expect(200);
 
-      expect(response.body.biography).toBeNull();
+      expect(response.body).toEqual(
+        expect.objectContaining({ biography: null }),
+      );
 
       const stored = await usersRepository.findOneByOrFail({ id: firstUserId });
       expect(stored.biography).toBeNull();
@@ -505,9 +522,13 @@ describe('Búsqueda de usuarios (e2e)', () => {
       })
       .expect(200);
 
-    expect(response.body.id).toBe(firstUserId);
-    expect(response.body.nickname).toBe(`sol_${suffix}`);
-    expect(response.body.name).toBe('Nombre permitido');
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        id: firstUserId,
+        nickname: `sol_${suffix}`,
+        name: 'Nombre permitido',
+      }),
+    );
 
     const firstUser = await usersRepository.findOneByOrFail({
       id: firstUserId,
@@ -562,8 +583,12 @@ describe('Búsqueda de usuarios (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
 
-    expect(ownProfile.body.profilePicture).toBe(expectedUrl);
-    expect(publicProfile.body.profilePicture).toBe(expectedUrl);
+    expect(ownProfile.body).toEqual(
+      expect.objectContaining({ profilePicture: expectedUrl }),
+    );
+    expect(publicProfile.body).toEqual(
+      expect.objectContaining({ profilePicture: expectedUrl }),
+    );
     expect(search.body).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -636,8 +661,10 @@ describe('Búsqueda de usuarios (e2e)', () => {
 
     const key = storedUser.profilePicture!;
 
-    expect(response.body.profilePicture).toBe(
-      `http://localhost:3000/media/${key}`,
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        profilePicture: `http://localhost:3000/media/${key}`,
+      }),
     );
 
     const storedContent = await readFile(join(uploadRoot, ...key.split('/')));
@@ -1035,5 +1062,468 @@ describe('Búsqueda de usuarios (e2e)', () => {
 
     expect(files).toHaveLength(2);
     expect(files).toContain(previousKey.split('/').at(-1));
+  });
+  it('devuelve la URL del banner y permite leerlo públicamente', async () => {
+    const content = Buffer.from('banner de prueba');
+
+    const storedBanner = await testStorage.saveProfileBanner(
+      firstUserId,
+      content,
+      'image/png',
+    );
+
+    await usersRepository.update(
+      { id: firstUserId },
+      { banner: storedBanner.key },
+    );
+
+    const expectedUrl = `http://localhost:3000/media/${storedBanner.key}`;
+
+    const ownProfile = await request(app.getHttpServer())
+      .get('/users/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    const publicProfile = await request(app.getHttpServer())
+      .get(`/users/by-nickname/sol_${suffix}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(ownProfile.body).toEqual(
+      expect.objectContaining({ banner: expectedUrl }),
+    );
+    expect(publicProfile.body).toEqual(
+      expect.objectContaining({ banner: expectedUrl }),
+    );
+
+    // El banner es público: no se envía Authorization.
+    const imageResponse = await request(app.getHttpServer())
+      .get(`/media/${storedBanner.key}`)
+      .set('Origin', 'http://localhost:5173')
+      .expect(200);
+
+    expect(imageResponse.headers['content-type']).toMatch(/^image\/png/);
+    expect(imageResponse.headers['access-control-allow-origin']).toBe(
+      'http://localhost:5173',
+    );
+  });
+
+  it('requiere autenticación para subir un banner', async () => {
+    const image = await createBannerTestImage();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .attach('file', image, 'banner.png')
+      .expect(401);
+  });
+
+  it('rechaza una subida de banner sin archivo', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(400);
+  });
+
+  it('rechaza contenido inválido aunque tenga extensión de imagen', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', Buffer.from('no es una imagen'), 'banner.png')
+      .expect(400);
+  });
+
+  it('rechaza un banner que supera los 5 MiB', async () => {
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', Buffer.alloc(5 * 1024 * 1024 + 2), 'grande.png')
+      .expect(413);
+  });
+
+  it('rechaza campos de texto adicionales en la subida del banner', async () => {
+    const image = await createBannerTestImage();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .field('description', 'Campo no permitido')
+      .attach('file', image, 'banner.png')
+      .expect(400);
+  });
+
+  it('sube el banner sin modificar el avatar ni el perfil de otro usuario', async () => {
+    const image = await createBannerTestImage();
+
+    const avatar = await testStorage.saveProfilePicture(
+      firstUserId,
+      image,
+      'image/png',
+    );
+
+    await usersRepository.update(
+      { id: firstUserId },
+      { profilePicture: avatar.key },
+    );
+
+    const response = await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'banner.png')
+      .expect(201);
+
+    const firstUser = await usersRepository.findOneByOrFail({
+      id: firstUserId,
+    });
+
+    const secondUser = await usersRepository.findOneByOrFail({
+      id: secondUserId,
+    });
+
+    expect(firstUser.profilePicture).toBe(avatar.key);
+    expect(firstUser.banner).toMatch(
+      new RegExp(`^profile-banners/${firstUserId}/[0-9a-f-]+\\.png$`, 'i'),
+    );
+    expect(secondUser.banner).toBeNull();
+
+    const bannerKey = firstUser.banner;
+
+    if (!bannerKey) {
+      throw new Error('No se guardó la clave del banner');
+    }
+
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        banner: `http://localhost:3000/media/${bannerKey}`,
+        profilePicture: `http://localhost:3000/media/${avatar.key}`,
+      }),
+    );
+
+    await request(app.getHttpServer()).get(`/media/${bannerKey}`).expect(200);
+
+    await request(app.getHttpServer()).get(`/media/${avatar.key}`).expect(200);
+  });
+
+  it('reemplaza el banner anterior sin borrar el avatar', async () => {
+    const image = await createBannerTestImage();
+
+    const avatar = await testStorage.saveProfilePicture(
+      firstUserId,
+      image,
+      'image/png',
+    );
+
+    await usersRepository.update(
+      { id: firstUserId },
+      { profilePicture: avatar.key },
+    );
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primero.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousBanner = before.banner;
+
+    if (!previousBanner) {
+      throw new Error('No se guardó el primer banner');
+    }
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'segundo.png')
+      .expect(201);
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    expect(after.banner).not.toBe(previousBanner);
+    expect(after.profilePicture).toBe(avatar.key);
+
+    if (!after.banner) {
+      throw new Error('No se guardó el nuevo banner');
+    }
+
+    await request(app.getHttpServer())
+      .get(`/media/${previousBanner}`)
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .get(`/media/${after.banner}`)
+      .expect(200);
+
+    await request(app.getHttpServer()).get(`/media/${avatar.key}`).expect(200);
+  });
+
+  it('devuelve 404 si el usuario de la sesión ya no existe', async () => {
+    const image = await createBannerTestImage();
+    const token = await jwtService.signAsync({ sub: randomUUID() });
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', image, 'banner.png')
+      .expect(404);
+  });
+
+  it('conserva el banner activo ante dos subidas simultáneas', async () => {
+    if (!uploadRoot) {
+      throw new Error('No se creó la carpeta temporal');
+    }
+
+    const image = await createBannerTestImage();
+
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/users/me/profile-banner')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'primero.png'),
+      request(app.getHttpServer())
+        .post('/users/me/profile-banner')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segundo.png'),
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+
+    const user = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const activeBanner = user.banner;
+
+    if (!activeBanner) {
+      throw new Error('No quedó un banner activo');
+    }
+
+    await request(app.getHttpServer())
+      .get(`/media/${activeBanner}`)
+      .expect(200);
+
+    const files = await readdir(
+      join(uploadRoot, 'profile-banners', firstUserId),
+    );
+
+    expect(files).toEqual([activeBanner.split('/').at(-1)]);
+  });
+
+  it('conserva el avatar y el banner al subir ambos simultáneamente', async () => {
+    const image = await createBannerTestImage();
+
+    const [pictureResponse, bannerResponse] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/users/me/profile-picture')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'avatar.png'),
+      request(app.getHttpServer())
+        .post('/users/me/profile-banner')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'banner.png'),
+    ]);
+
+    expect(pictureResponse.status).toBe(201);
+    expect(bannerResponse.status).toBe(201);
+
+    const user = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    if (!user.profilePicture || !user.banner) {
+      throw new Error('No quedaron guardadas ambas imágenes');
+    }
+
+    expect(user.profilePicture).toMatch(/^profile-pictures\//);
+    expect(user.banner).toMatch(/^profile-banners\//);
+
+    await request(app.getHttpServer())
+      .get(`/media/${user.profilePicture}`)
+      .expect(200);
+
+    await request(app.getHttpServer()).get(`/media/${user.banner}`).expect(200);
+  });
+
+  it('conserva el banner anterior si falla el almacenamiento del nuevo', async () => {
+    const image = await createBannerTestImage();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primero.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousBanner = before.banner;
+
+    if (!previousBanner) {
+      throw new Error('No se guardó el banner anterior');
+    }
+
+    const saveSpy = jest
+      .spyOn(testStorage, 'saveProfileBanner')
+      .mockRejectedValueOnce(new Error('Error de almacenamiento simulado'));
+
+    try {
+      await request(app.getHttpServer())
+        .post('/users/me/profile-banner')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segundo.png')
+        .expect(500);
+    } finally {
+      saveSpy.mockRestore();
+    }
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    expect(after.banner).toBe(previousBanner);
+
+    await request(app.getHttpServer())
+      .get(`/media/${previousBanner}`)
+      .expect(200);
+  });
+
+  it('conserva el banner anterior si falla la transacción', async () => {
+    if (!uploadRoot) {
+      throw new Error('No se creó la carpeta temporal');
+    }
+
+    const image = await createBannerTestImage();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primero.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousBanner = before.banner;
+
+    if (!previousBanner) {
+      throw new Error('No se guardó el banner anterior');
+    }
+
+    const transactionSpy = jest
+      .spyOn(app.get(DataSource), 'transaction')
+      .mockRejectedValueOnce(new Error('Error de transacción simulado'));
+
+    try {
+      await request(app.getHttpServer())
+        .post('/users/me/profile-banner')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segundo.png')
+        .expect(500);
+    } finally {
+      transactionSpy.mockRestore();
+    }
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    expect(after.banner).toBe(previousBanner);
+
+    await request(app.getHttpServer())
+      .get(`/media/${previousBanner}`)
+      .expect(200);
+
+    // El archivo nuevo se conserva por precaución ante un fallo ambiguo.
+    const files = await readdir(
+      join(uploadRoot, 'profile-banners', firstUserId),
+    );
+
+    expect(files).toHaveLength(2);
+    expect(files).toContain(previousBanner.split('/').at(-1));
+  });
+
+  it('aplica la orientación y elimina EXIF del banner público', async () => {
+    const original = await sharp({
+      create: {
+        width: 12,
+        height: 6,
+        channels: 3,
+        background: '#35695e',
+      },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+
+    const originalMetadata = await sharp(original).metadata();
+
+    expect(originalMetadata.orientation).toBe(6);
+    expect(originalMetadata.exif).toBeDefined();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', original, 'banner.jpg')
+      .expect(201);
+
+    const user = await usersRepository.findOneByOrFail({ id: firstUserId });
+
+    if (!user.banner) {
+      throw new Error('No se guardó el banner');
+    }
+
+    const response = await request(app.getHttpServer())
+      .get(`/media/${user.banner}`)
+      .expect(200);
+
+    expect(response.headers['content-type']).toMatch(/^image\/jpeg/);
+    expect(Buffer.isBuffer(response.body)).toBe(true);
+
+    const metadata = await sharp(response.body as Buffer).metadata();
+
+    expect(metadata.width).toBe(6);
+    expect(metadata.height).toBe(12);
+    expect(metadata.orientation).toBeUndefined();
+    expect(metadata.exif).toBeUndefined();
+    expect(metadata.xmp).toBeUndefined();
+    expect(metadata.iptc).toBeUndefined();
+  });
+
+  it('conserva el nuevo banner si falla el borrado del anterior', async () => {
+    const image = await createBannerTestImage();
+
+    await request(app.getHttpServer())
+      .post('/users/me/profile-banner')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('file', image, 'primero.png')
+      .expect(201);
+
+    const before = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const previousBanner = before.banner;
+
+    if (!previousBanner) {
+      throw new Error('No se guardó el banner anterior');
+    }
+
+    const deleteSpy = jest
+      .spyOn(testStorage, 'deleteProfileBanner')
+      .mockRejectedValueOnce(new Error('Error de borrado simulado'));
+
+    try {
+      await request(app.getHttpServer())
+        .post('/users/me/profile-banner')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .attach('file', image, 'segundo.png')
+        .expect(201);
+
+      expect(deleteSpy).toHaveBeenCalledWith(previousBanner);
+    } finally {
+      deleteSpy.mockRestore();
+    }
+
+    const after = await usersRepository.findOneByOrFail({ id: firstUserId });
+    const activeBanner = after.banner;
+
+    if (!activeBanner) {
+      throw new Error('No se guardó el nuevo banner');
+    }
+
+    expect(activeBanner).not.toBe(previousBanner);
+
+    await request(app.getHttpServer())
+      .get(`/media/${activeBanner}`)
+      .expect(200);
+
+    // El borrado falló, por lo que el archivo anterior sigue existiendo.
+    await request(app.getHttpServer())
+      .get(`/media/${previousBanner}`)
+      .expect(200);
   });
 });

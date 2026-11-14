@@ -1,5 +1,5 @@
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import {
   ImageContentType,
@@ -8,9 +8,10 @@ import {
 } from '../storage.interface';
 
 import {
-  parseProfilePictureKey,
-  createProfilePictureKey,
-} from '../profile-picture-key';
+  createProfileImageKey,
+  parseProfileImageKey,
+  ProfileImageKind,
+} from '../profile-image-key';
 
 export class LocalStorageService implements StorageService {
   private readonly rootDirectory: string;
@@ -24,33 +25,55 @@ export class LocalStorageService implements StorageService {
     content: Buffer,
     contentType: ImageContentType,
   ): Promise<StoredFile> {
-    const { key, fileName } = createProfilePictureKey(userId, contentType);
+    return this.saveImage(userId, content, contentType, 'picture');
+  }
 
-    const directory = join(this.rootDirectory, 'profile-pictures', userId);
-    const filePath = join(directory, fileName);
+  async saveProfileBanner(
+    userId: string,
+    content: Buffer,
+    contentType: ImageContentType,
+  ): Promise<StoredFile> {
+    return this.saveImage(userId, content, contentType, 'banner');
+  }
 
-    await mkdir(directory, { recursive: true });
+  async deleteProfilePicture(key: string): Promise<void> {
+    return this.deleteImage(key, 'picture');
+  }
 
+  async deleteProfileBanner(key: string): Promise<void> {
+    return this.deleteImage(key, 'banner');
+  }
+
+  private async saveImage(
+    userId: string,
+    content: Buffer,
+    contentType: ImageContentType,
+    kind: ProfileImageKind,
+  ): Promise<StoredFile> {
+    const { key } = createProfileImageKey(userId, contentType, kind);
+
+    // The key is generated on the server based on the UUID and the validated extension.
+    const filePath = join(this.rootDirectory, ...key.split('/'));
+
+    await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content, { flag: 'wx' });
 
     return { key };
   }
 
-  async deleteProfilePicture(key: string): Promise<void> {
-    const parsed = parseProfilePictureKey(key);
-
-    if (!parsed) {
-      throw new Error('Invalid profile picture key');
+  private async deleteImage(
+    key: string,
+    kind: ProfileImageKind,
+  ): Promise<void> {
+    if (!parseProfileImageKey(key, kind)) {
+      throw new Error(
+        kind === 'picture'
+          ? 'Invalid profile picture key'
+          : 'Invalid profile banner key',
+      );
     }
 
-    const { userId, fileName } = parsed;
-
-    const filePath = join(
-      this.rootDirectory,
-      'profile-pictures',
-      userId,
-      fileName,
-    );
+    const filePath = join(this.rootDirectory, ...key.split('/'));
 
     try {
       await unlink(filePath);

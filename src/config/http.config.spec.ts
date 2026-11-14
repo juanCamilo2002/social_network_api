@@ -21,9 +21,13 @@ describe('configureHttp', () => {
     );
 
     expect(app.enableCors).toHaveBeenCalledTimes(1);
-    expect(app.use).toHaveBeenCalledTimes(1);
+    expect(app.use).toHaveBeenCalledTimes(2);
     expect(app.use).toHaveBeenCalledWith(
       '/media/profile-pictures',
+      expect.any(Function),
+    );
+    expect(app.use).toHaveBeenCalledWith(
+      '/media/profile-banners',
       expect.any(Function),
     );
   });
