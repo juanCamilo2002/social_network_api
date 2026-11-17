@@ -21,10 +21,14 @@ export class PostsService {
     private readonly config: ConfigService<EnvironmentVariables>,
   ) {}
 
-  async findAll(): Promise<PostResponse[]> {
-    const posts = await this.postsWithAuthor()
-      .orderBy('post.createdAt', 'DESC')
-      .getMany();
+  async findAll(authorId?: string): Promise<PostResponse[]> {
+    const query = this.postsWithAuthor();
+
+    if (authorId !== undefined) {
+      query.where('post.authorId = :authorId', { authorId });
+    }
+
+    const posts = await query.orderBy('post.createdAt', 'DESC').getMany();
 
     return posts.map((post) => this.toResponse(post));
   }
