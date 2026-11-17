@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 
 import { PostsService } from './posts.service';
@@ -16,14 +17,15 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { ListPostsDto } from './dto/list-posts.dto';
 
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Get()
-  findAll() {
-    return this.postsService.findAll();
+  findAll(@Query() query: ListPostsDto) {
+    return this.postsService.findAll(query.authorId);
   }
 
   @Get(':id')

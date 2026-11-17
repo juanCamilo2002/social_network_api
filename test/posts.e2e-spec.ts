@@ -458,4 +458,127 @@ describe('Posts con PostgreSQL (e2e)', () => {
       `http://localhost:3000/media/${key}`,
     );
   });
+
+  it('requiere autenticación para filtrar publicaciones por autor', async () => {
+    await request(app.getHttpServer())
+      .get('/posts')
+      .query({ authorId: randomUUID() })
+      .expect(401);
+  });
+
+  it('rechaza un authorId inválido', async () => {
+    await request(app.getHttpServer())
+      .get('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ authorId: 'no-es-un-uuid' })
+      .expect(400);
+  });
+
+  it('devuelve una lista vacía para un autor sin publicaciones', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ authorId: randomUUID() })
+      .expect(200);
+
+    expect(response.body).toEqual([]);
+  });
+
+  it('filtra por autor y conserva el feed sin filtro', async () => {
+    if (!userId) {
+      throw new Error('No se creó el usuario de prueba');
+    }
+
+    const suffix = randomUUID().replace(/-/g, '');
+
+    const otherUser = await usersRepository.save(
+      usersRepository.create({
+        nickname: `other_${suffix}`,
+        name: 'Otro',
+        lastName: 'Usuario',
+        email: `other_${suffix}@example.com`,
+        passwordHash: 'hash-no-utilizado-en-esta-prueba',
+        birthdate: null,
+      }),
+    );
+
+    try {
+      const ownPost = await postsRepository.save(
+        postsRepository.create({
+          authorId: userId,
+          content: 'Publicación del primer usuario',
+        }),
+      );
+
+      const otherPost = await postsRepository.save(
+        postsRepository.create({
+          authorId: otherUser.id,
+          content: 'Publicación del segundo usuario',
+        }),
+      );
+
+      const filtered = await request(app.getHttpServer())
+        .get('/posts')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .query({ authorId: otherUser.id })
+        .expect(200);
+
+      const filteredPosts = filtered.body as Array<{
+        id: string;
+        authorId: string;
+      }>;
+
+      expect(filteredPosts).toHaveLength(1);
+      expect(filteredPosts[0].id).toBe(otherPost.id);
+      expect(filteredPosts[0].authorId).toBe(otherUser.id);
+      expect(filteredPosts.map((post) => post.id)).not.toContain(ownPost.id);
+
+      const feed = await request(app.getHttpServer())
+        .get('/posts')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      const feedPosts = feed.body as Array<{ id: string }>;
+      const feedIds = feedPosts.map((post) => post.id);
+
+      expect(feedIds).toContain(ownPost.id);
+      expect(feedIds).toContain(otherPost.id);
+    } finally {
+      // El afterEach existente limpia el primer usuario y sus publicaciones.
+      await postsRepository.delete({ authorId: otherUser.id });
+      await usersRepository.delete({ id: otherUser.id });
+    }
+  });
+
+  it('ordena las publicaciones filtradas de más recientes a más antiguas', async () => {
+    if (!userId) {
+      throw new Error('No se creó el usuario de prueba');
+    }
+
+    const older = await postsRepository.save(
+      postsRepository.create({
+        authorId: userId,
+        content: 'Publicación anterior',
+        createdAt: new Date('2024-01-01T12:00:00.000Z'),
+      }),
+    );
+
+    const newer = await postsRepository.save(
+      postsRepository.create({
+        authorId: userId,
+        content: 'Publicación reciente',
+        createdAt: new Date('2024-01-02T12:00:00.000Z'),
+      }),
+    );
+
+    const response = await request(app.getHttpServer())
+      .get('/posts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ authorId: userId })
+      .expect(200);
+
+    const posts = response.body as Array<{ id: string }>;
+
+    expect(posts.map((post) => post.id)).toEqual([newer.id, older.id]);
+  });
 });
